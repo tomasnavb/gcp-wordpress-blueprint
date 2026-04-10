@@ -1,0 +1,12 @@
+terraform.tfvars
+*.tfvars
+tmp
+tmp/*
+venv
+venv/*
+__pycache__
+__pycache__/*
+.pytest_cache
+.pytest_cache/*
+*.log
+*.zip
