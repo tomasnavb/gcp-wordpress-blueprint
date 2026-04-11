@@ -1,51 +1,13 @@
-# Production VM Instance - No External IP, IAP Access Only
-resource "google_compute_instance" "prod" {
-  name         = var.vm_prod_name
-  machine_type = var.vm_prod_machine_type
-
-  boot_disk {
-    initialize_params {
-      image = var.vm_boot_disk_image
-      size  = ""
-      type  = ""
-    }
-  }
-
-  network_interface {
-    network = google_compute_network.prod.name
-  }
-
-  tags = ["prod-vm"]
-
-}
-
-# Management VM Instance - No External IP, IAP Access Only, CloudSQL Auth Proxy Installed
-resource "google_compute_instance" "mgmt" {
-  name         = var.vm_mgmt_name
-  machine_type = var.vm_mgmt_machine_type
-
-  boot_disk {
-    initialize_params {
-      image = var.vm_boot_disk_image
-      size  = ""
-      type  = ""
-    }
-  }
-
-  network_interface {
-    network = google_compute_network.mgmt.name
-  }
-
-  attached_disk {
-    source = google_compute_disk.mgmt.self_link
-
-  }
-
-  service_account {
-    email  = google_service_account.mgmt_vm
-    scopes = ["cloud-platform"]
-  }
-
-  tags = ["mgmt-vm"]
-
+module "wordpress_vm_mgmt" {
+  source = "./modules/compute_instance"
+  vm_instance_name = "wordpress-vm-mgmt"
+  vm_machine_type = "e2-medium"
+  instance_tags = ["management", "web-server", "no-external-ip"]
+  vpc_id = google_compute_network.mgmt.id
+  subnet_id = google_compute_subnetwork.mgmt.id
+  boot_disk_image = "debian-cloud/debian-11"
+  boot_disk_size_gb = "10GB"
+  boot_disk_type = "pd-standard"
+  start_up_script_path = "${path.module}/scripts/startup-mgmt.sh"
+  vm_service_account_email = google_service_account.wordpress_vm_mgmt.email
 }
