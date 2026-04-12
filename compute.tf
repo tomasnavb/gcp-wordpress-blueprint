@@ -15,7 +15,7 @@ module "wordpress_vm_mgmt" {
 }
 
 /* Wordpress Production VM */
-module "vm_instance_prod" {
+module "wordpress_vm_prod" {
   source = "./modules/compute_instance"
   vm_instance_name = var.vm_prod_name
   vm_machine_type = var.vm_prod_machine_type

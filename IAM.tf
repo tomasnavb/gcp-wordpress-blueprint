@@ -1,19 +1,19 @@
 # IAM.tf - IAM roles and service accounts for the WordPress site deployment on GCP
-resource "google_project_iam_member" "iap_tunnel" {
+resource "google_project_iam_member" "iap_tunnel_access" {
   project = var.project_id
   role    = "roles/iap.tunnelResourceAccesor"
   member  = "user:tomy.brm@gmail.com"
 
 }
 
-resource "google_project_iam_member" "db_editor" {
+resource "google_project_iam_member" "cloudsql_editor" {
   project = var.project_id
   role    = "role/cloudsql.editor"
   member  = "serviceAccount:${google_service_account.mgmt_vm.email}"
 
 }
 
-resource "google_storage_bucket_iam_member" "bucket_writer" {
+resource "google_storage_bucket_iam_member" "bucket_admin" {
   bucket = google_storage_bucket.main.self_link
   role   = "role/storage.bucketAdmin"
   member = "serviceAccount:${google_sql_database_instance.main.service_account_email_address}"
@@ -22,7 +22,7 @@ resource "google_storage_bucket_iam_member" "bucket_writer" {
 
 resource "google_project_iam_member" "cloudsql_backup_fn_role_binding" {
   project = var.project_id
-  role    = google_project_iam_custom_role.db_backup.name
+  role    = google_project_iam_custom_role.fn_db_backup.self_link
   member  = "serviceAccount:${google_service_account.cloudsql_backup_fn.email}"
 
 }
@@ -40,7 +40,7 @@ resource "google_service_account" "cloudsql_backup_fn" {
 }
 
 # IAM Custom Role for Cloud Function to backup CloudSQL database to Cloud Storage
-resource "google_project_iam_custom_role" "db_backup" {
+resource "google_project_iam_custom_role" "fn_db_backup" {
   role_id     = "dbBackupRole"
   title       = "Database Backup Role"
   description = "Custom role for Cloud Function to backup CloudSQL database to Cloud Storage"

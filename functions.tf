@@ -17,3 +17,24 @@ resource "google_cloudfunctions_function" "cloudsql_backup" {
 
   service_account_email = google_service_account.cloudsql_backup_fn.email
 }
+
+resource "google_cloud_scheduler_job" "trigger_backup" {
+  name             = "trigger-db-backup"
+  description      = "Cloud Scheduler job to trigger Cloud Function for CloudSQL backup every 24 hours"
+  schedule         = "0 0 * * *" # Every 24 hours at midnight
+  time_zone        = "UTC+1" # Western Europe time zone
+  attempt_deadline = "60s"
+
+  http_target {
+    http_method = "POST"
+    uri         = google_cloudfunctions_function.cloudsql_backup.https_trigger_url
+    headers = {
+      "Content-Type" = "application/json"
+    }
+    body = base64decode(jsonencode({type = "export"}))
+    oidc_token {
+      service_account_email = google_service_account.cloudsql_backup_fn.email
+    }
+  }
+  
+}
