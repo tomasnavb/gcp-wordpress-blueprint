@@ -18,7 +18,7 @@ resource "google_compute_instance" "vm" {
   }
 
   metadata = {
-    "startup_script" = "${path.module}/scripts/startup-prod.sh"
+    "startup_script" = var.start_up_script_path
   }
 
   service_account {

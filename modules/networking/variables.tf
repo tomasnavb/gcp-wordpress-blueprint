@@ -27,3 +27,4 @@ variable "enable_nat" {
   description = "Whether to enable NAT for the Cloud Router"
   type        = bool
 }
+

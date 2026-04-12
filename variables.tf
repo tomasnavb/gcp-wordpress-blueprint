@@ -163,8 +163,16 @@ variable "backup_bucket_base_name" {
   default     = "wordpress-bucket-prod"
 }
 
+variable "external_lb_proxy_subnet_cidr" {
+  description = "IP CIDR range for the external load balancer proxy subnet"
+  type        = string
+  default     = "10.0.1.0/24"
+}
+
 locals {
   full_bucket_name = "${var.backup_bucket_base_name}-${var.project_id}"
 }
+
+
 
 

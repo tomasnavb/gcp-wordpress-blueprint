@@ -1,3 +1,4 @@
+# VPC prod with a subnet for the VM unmanaged instance group
 module "vpc_prod" {
   source = "./modules/networking"
 
@@ -17,5 +18,20 @@ module "vpc_mgmt" {
   subnet_ip_cidr_range = var.subnet_mgmt_ip_cidr_range
   enable_nat           = true
 }
+
+resource "google_compute_network_peering" "peering-prod-mgmt" {
+  name         = "peering-prod-mgmt"
+  network      = module.vpc_prod.vpc_self_link
+  peer_network = module.vpc_mgmt.vpc_self_link
+}
+
+resource "google_compute_network_peering" "peering-mgmt-prod" {
+  name         = "peering-mgmt-prod"
+  network      = module.vpc_mgmt.vpc_self_link
+  peer_network = module.vpc_prod.vpc_self_link
+
+}
+
+
 
 
