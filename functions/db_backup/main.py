@@ -1,3 +1,7 @@
+'''Cloud Function to perform on-demand backups of a Cloud SQL instance. - 
+Triggered by an HTTP request with a JSON body containing the backup type (snapshot, export, or both).
+- Uses the Cloud SQL Admin API to create backups and exports, and waits for operations to complete before returning results.'''
+
 import functions_framework
 from googleapiclient.discovery import build
 from google.cloud import storage
