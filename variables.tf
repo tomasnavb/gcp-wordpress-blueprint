@@ -67,7 +67,7 @@ variable "db_region" {
 variable "db_version" {
   description = "CloudSQL database engine PostgreSQL"
   type        = string
-  default     = "POSTGRES_17"
+  default     = "MYSQL_8_4"
 }
 
 variable "db_tier" {
@@ -168,6 +168,7 @@ variable "external_lb_proxy_subnet_cidr" {
   type        = string
   default     = "10.0.1.0/24"
 }
+
 
 locals {
   full_bucket_name = "${var.backup_bucket_base_name}-${var.project_id}"

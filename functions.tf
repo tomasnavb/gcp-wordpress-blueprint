@@ -4,7 +4,7 @@ resource "google_cloudfunctions_function" "cloudsql_backup" {
   description           = "Cloud Function to backup CloudSQL database to Cloud Storage"
   runtime               = "python311"
   trigger_http          = true
-  timeout               = 60
+  timeout               = 600
   source_archive_bucket = google_storage_bucket.scripts
   source_archive_object = google_storage_bucket_object.function_code.name
   entry_point           = "run_backup"
