@@ -27,10 +27,25 @@ resource "google_project_iam_member" "cloudsql_backup_fn_role_binding" {
 
 }
 
+resource "google_cloudfuntions_function_iam_mbmeter" "fn_invoker_binding" {
+  project        = var.project_id
+  region         = var.project_region
+  cloud_function = google_cloudfunctions_function.cloudsql_backup.name
+  role           = "roles/cloudfunctions.invoker"
+  member         = "serviceAccount:${google_service_account.scheduler_fn_invoker.email}"
+
+}
+
 resource "google_service_account" "mgmt_vm" {
   account_id   = "mgmt-vm-sa"
   display_name = "Service Account for the database connection of the mgmt VM"
 
+}
+
+resource "google_service_account" "scheduler_fn_invoker" {
+  account_id   = "scheduler-fn-invoker-sa"
+  display_name = "Service Account for Cloud Scheduler to invoke Cloud Function for CloudSQL backup"
+  
 }
 
 resource "google_service_account" "cloudsql_backup_fn" {

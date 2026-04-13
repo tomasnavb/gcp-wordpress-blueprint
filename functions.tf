@@ -18,23 +18,28 @@ resource "google_cloudfunctions_function" "cloudsql_backup" {
   service_account_email = google_service_account.cloudsql_backup_fn.email
 }
 
-resource "google_cloud_scheduler_job" "trigger_backup" {
-  name             = "trigger-db-backup"
-  description      = "Cloud Scheduler job to trigger Cloud Function for CloudSQL backup every 24 hours"
-  schedule         = "0 0 * * *" # Every 24 hours at midnight
-  time_zone        = "UTC+1" # Western Europe time zone
-  attempt_deadline = "60s"
+/* Cloud Scheduler jobs to trigger Cloud Function for CloudSQL backups - Export backup for 90 days retention and Snapshot backup
+every 4 hours for 7 days retention for point-in-time recovery. Using default time-zone setted on UTC+1 (Western Europe time zone)*/
 
-  http_target {
-    http_method = "POST"
-    uri         = google_cloudfunctions_function.cloudsql_backup.https_trigger_url
-    headers = {
-      "Content-Type" = "application/json"
-    }
-    body = base64decode(jsonencode({type = "export"}))
-    oidc_token {
-      service_account_email = google_service_account.cloudsql_backup_fn.email
-    }
-  }
-  
+module "export_db_scheduler" {
+  source = "./modules/cloud_scheduler"
+
+  scheduler_name                = "export-db-backup"
+  scheduler_description         = "Cloud Scheduler job to trigger Cloud Function for CloudSQL export backup"
+  scheduler_schedule            = "0 0 * * *" # Daily at midnight
+  fn_uri                        = google_cloudfunctions_function.cloudsql_backup.https_trigger_url
+  backup_type                   = "export"
+  invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
+}
+
+module "snapshot_db_scheduler" {
+  source = "./modules/cloud_scheduler"
+
+  scheduler_name                = "snapshot-db-backup"
+  scheduler_description         = "Cloud Scheduler job to trigger Cloud Function for CloudSQL snapshot backup"
+  scheduler_schedule            = "0 */4 * * *" # Every 4 hours
+  fn_uri                        = google_cloudfunctions_function.cloudsql_backup.https_trigger_url
+  backup_type                   = "snapshot"
+  invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
+
 }
