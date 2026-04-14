@@ -13,10 +13,10 @@ resource "google_cloud_scheduler_job" "trigger_backup" {
     headers = {
       "Content-Type" = "application/json"
     }
-    body = base64encode(jsonencode({type = var.backup_type}))
+    body = base64encode(jsonencode({ type = var.backup_type }))
     oidc_token {
       service_account_email = var.invoker_service_account_email
     }
   }
-  
+
 }

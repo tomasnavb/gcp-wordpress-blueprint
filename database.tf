@@ -14,9 +14,9 @@ resource "google_sql_database_instance" "main" {
     tier              = var.db_tier
     edition           = var.db_edition
     availability_type = var.db_availability_type
-    disk_autoresize = true
-    disk_type       = var.db_disk_type
-    disk_size       = var.db_disk_size
+    disk_autoresize   = true
+    disk_type         = var.db_disk_type
+    disk_size         = var.db_disk_size
   }
 
   lifecycle {

@@ -5,8 +5,15 @@ resource "google_compute_instance" "vm" {
   tags = var.instance_tags
 
   network_interface {
-    network = var.vpc_id
+    network    = var.vpc_id
     subnetwork = var.subnet_id
+
+    dynamic "access_config" {
+      for_each = has_external_ip ? [1] : []
+      content {
+      }
+
+    }
   }
 
   boot_disk {
@@ -18,11 +25,11 @@ resource "google_compute_instance" "vm" {
   }
 
   metadata = {
-    "startup_script" = var.start_up_script_path
+    "startup-script" = file(var.start_up_script_path)
   }
 
   service_account {
-    email = var.vm_service_account_email
+    email  = var.vm_service_account_email
     scopes = ["cloud-platform"]
   }
 

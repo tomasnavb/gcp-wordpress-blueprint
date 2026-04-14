@@ -16,13 +16,20 @@ variable "instance_tags" {
 }
 
 variable "vpc_id" {
-    description = "ID of the VPC network to which the VM instance will be connected"
-    type        = string  
+  description = "ID of the VPC network to which the VM instance will be connected"
+  type        = string
 }
 
 variable "subnet_id" {
-    description = "ID of the subnet to which the VM instance will be connected"
-    type        = string
+  description = "ID of the subnet to which the VM instance will be connected"
+  type        = string
+}
+
+variable "has_external_ip" {
+  description = "Boolean flag to determine if the VM instance should have an external IP address"
+  type        = bool
+  default     = false
+
 }
 
 variable "boot_disk_image" {
@@ -34,8 +41,8 @@ variable "boot_disk_image" {
 
 variable "boot_disk_size_gb" {
   description = "Disk size for the VM boot disk. Default 10GB for small instances"
-  type        = string
-  default     = "10GB"
+  type        = number
+  default     = 10
 }
 
 variable "boot_disk_type" {
@@ -45,12 +52,12 @@ variable "boot_disk_type" {
 }
 
 variable "start_up_script_path" {
-    description = "Path to the startup script to be executed when the VM instance starts"
-    type        = string
+  description = "Path to the startup script to be executed when the VM instance starts"
+  type        = string
 }
 
 variable "vm_service_account_email" {
-    description = "Email of the service account to attach to the VM instance for authentication and permissions"
-    type        = string
-    default = null
+  description = "Email of the service account to attach to the VM instance for authentication and permissions"
+  type        = string
+  default     = null
 }

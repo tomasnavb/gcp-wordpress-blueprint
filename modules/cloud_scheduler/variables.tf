@@ -4,11 +4,11 @@ variable "scheduler_name" {
   default     = "trigger-db-backup"
 }
 
-variable "scheduler_description"    {
+variable "scheduler_description" {
   description = "Description of the Cloud Scheduler job to trigger Cloud Function for CloudSQL backup"
   type        = string
   default     = "Cloud Scheduler job to trigger Cloud Function for CloudSQL"
-  
+
 }
 
 variable "scheduler_schedule" {
@@ -23,8 +23,8 @@ variable "scheduler_time_zone" {
 }
 
 variable "fn_uri" {
-    description = "URI for the backup Cloud Function"
-    type        = string
+  description = "URI for the backup Cloud Function"
+  type        = string
 }
 
 variable "backup_type" {
@@ -33,6 +33,6 @@ variable "backup_type" {
 }
 
 variable "invoker_service_account_email" {
-    description = "Service account for the specific functions's invoker"
-    type        = string
+  description = "Service account for the specific functions's invoker"
+  type        = string
 }

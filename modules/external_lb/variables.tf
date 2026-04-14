@@ -19,5 +19,5 @@ variable "listener_port" {
 
 variable "umig_instances" {
   description = "List of instances to add on the umig instances group"
-  type = list(string)
+  type        = list(string)
 }

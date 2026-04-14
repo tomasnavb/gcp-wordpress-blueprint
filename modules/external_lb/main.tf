@@ -36,21 +36,21 @@ resource "google_compute_region_health_check" "umig" {
 }
 
 resource "google_compute_region_backend_service" "umig_backend" {
-  name    = "gcp-lb-demo-backend-service"
-  region  = var.region
-  protocol = "HTTP"
+  name                  = "gcp-lb-demo-backend-service"
+  region                = var.region
+  protocol              = "HTTP"
   load_balancing_scheme = "EXTERNAL_MANAGED"
-  health_checks = [ google_compute_region_health_check.umig.self_link ]
+  health_checks         = [google_compute_region_health_check.umig.self_link]
   backend {
     group = google_compute_instance_group.umig.self_link
   }
-  
+
 }
 
 resource "google_compute_instance_group" "umig" {
-  name        = "umig-backend-group"
-  zone        = "${var.region}-a"
-  instances   = var.umig_instances
+  name      = "umig-backend-group"
+  zone      = "${var.region}-a"
+  instances = var.umig_instances
 }
 
 resource "google_compute_region_target_http_proxy" "external_lb_http_proxy" {

@@ -2,7 +2,7 @@
 
 # Bucket for CloudSQL database backups with lifecycle rule to delete objects after 90 days
 resource "google_storage_bucket" "cloudsql_backups" {
-  name          = local.full_bucket_name
+  name          = local.db_backup_bucket_name
   location      = "EU"
   storage_class = "COLDLINE"
   force_destroy = false
@@ -35,10 +35,10 @@ resource "google_storage_bucket" "cloudsql_backups" {
 
 # Storage bucket for Cloud Function source code
 resource "google_storage_bucket" "scripts" {
-  name          = "python-scripts"
+  name          = local.scripts_bucket_name
   location      = "EU"
   storage_class = "ARCHIVE"
-  
+
 }
 
 # Archive the Cloud Function source code

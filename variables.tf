@@ -157,11 +157,25 @@ variable "db_backup_fn_name" {
   default     = "wordpress-fn-db-backup-prod"
 }
 
-variable "backup_bucket_base_name" {
+variable "db_backup_fn_region" {
+  description = "Region for the CloudSQL backup function"
+  type        = string
+  default     = "europe-west8"
+}
+
+variable "db_backup_bucket_base_name" {
   description = "value"
   type        = string
   default     = "wordpress-bucket-prod"
 }
+
+variable "scripts_bucket_base_name" {
+  description = "Base name for the scripts bucket"
+  type        = string
+  default     = "wordpress-scripts-bucket"
+
+}
+
 
 variable "external_lb_proxy_subnet_cidr" {
   description = "IP CIDR range for the external load balancer proxy subnet"
@@ -171,7 +185,11 @@ variable "external_lb_proxy_subnet_cidr" {
 
 
 locals {
-  full_bucket_name = "${var.backup_bucket_base_name}-${var.project_id}"
+  db_backup_bucket_name = "${var.db_backup_bucket_base_name}-${var.project_id}"
+}
+
+locals {
+  scripts_bucket_name = "${var.scripts_bucket_base_name}-${var.project_id}"
 }
 
 
