@@ -1,5 +1,6 @@
 # Cloud Function to backup CloudSQL database to Cloud Storage
 resource "google_cloudfunctions2_function" "db_backup_function" {
+  depends_on  = [google_project_service.gcp_services]
   name        = var.db_backup_fn_name
   location    = var.db_backup_fn_region
   description = "This functions manages the DB backup snapshots and exports"
@@ -32,7 +33,8 @@ resource "google_cloudfunctions2_function" "db_backup_function" {
 every 4 hours for 7 days retention for point-in-time recovery. Using default time-zone setted on UTC+1 (Western Europe time zone)*/
 
 module "export_db_scheduler" {
-  source = "./modules/cloud_scheduler"
+  depends_on = [google_project_service.gcp_services]
+  source     = "./modules/cloud_scheduler"
 
   scheduler_name                = "export-db-backup"
   scheduler_description         = "Cloud Scheduler job to trigger Cloud Function for CloudSQL export backup"
@@ -43,7 +45,8 @@ module "export_db_scheduler" {
 }
 
 module "snapshot_db_scheduler" {
-  source = "./modules/cloud_scheduler"
+  depends_on = [google_project_service.gcp_services]
+  source     = "./modules/cloud_scheduler"
 
   scheduler_name                = "snapshot-db-backup"
   scheduler_description         = "Cloud Scheduler job to trigger Cloud Function for CloudSQL snapshot backup"

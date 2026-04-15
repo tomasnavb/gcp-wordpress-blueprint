@@ -1,6 +1,7 @@
 # VPC prod with a subnet for the VM unmanaged instance group
 module "vpc_prod" {
-  source = "./modules/networking"
+  depends_on = [google_project_service.gcp_services]
+  source     = "./modules/networking"
 
   vpc_name             = var.vpc_prod_name
   subnet_name          = var.subnet_prod_name
@@ -10,7 +11,8 @@ module "vpc_prod" {
 }
 
 module "vpc_mgmt" {
-  source = "./modules/networking"
+  depends_on = [google_project_service.gcp_services]
+  source     = "./modules/networking"
 
   vpc_name             = var.vpc_mgmt_name
   subnet_name          = var.subnet_mgmt_name
