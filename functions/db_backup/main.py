@@ -13,7 +13,7 @@ import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
+# Ver de reemplazar por os.environ (Provoca error si no encuentra la ENV)
 PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 INSTANCE_NAME = os.getenv("CLOUD_SQL_INSTANCE_NAME")
 BACKUP_BUCKET = os.getenv("BACKUP_BUCKET_NAME")

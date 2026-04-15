@@ -24,3 +24,15 @@ resource "google_sql_database_instance" "main" {
   }
 
 }
+
+resource "google_sql_database" "wordpress_db" {
+  name     = "wordpress"
+  instance = google_sql_database_instance.main.name
+  
+}
+
+resource "google_sql_user" "wordpress" {
+  name     = "wordpress"
+  instance = google_sql_database_instance.main
+  password = random_password.db_password.result
+}
