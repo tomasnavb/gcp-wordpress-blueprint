@@ -1,34 +1,35 @@
-variable "scheduler_name" {
+variable "name" {
   description = "Name of the Cloud Scheduler job to trigger Cloud Function for CloudSQL backup"
   type        = string
   default     = "trigger-db-backup"
 }
 
-variable "scheduler_description" {
+variable "description" {
   description = "Description of the Cloud Scheduler job to trigger Cloud Function for CloudSQL backup"
   type        = string
   default     = "Cloud Scheduler job to trigger Cloud Function for CloudSQL"
 
 }
 
-variable "scheduler_schedule" {
-  description = "Schedule for the Cloud Scheduler job to trigger Cloud Function for CloudSQL backup"
+variable "schedule" {
+  description = "Schedule for the Cloud Scheduler job to trigger Cloud Function for CloudSQL backup. Default is set to daily at midnight (0 0 * * *)"
   type        = string
+  default     = "0 0 * * *"
 }
 
-variable "scheduler_time_zone" {
+variable "time_zone" {
   description = "Time zone for the Cloud Scheduler job to trigger Cloud Function for CloudSQL backup. Default is set to UTC+1 (Western Europe time zone)"
   type        = string
   default     = "UTC+1"
 }
 
-variable "fn_uri" {
-  description = "URI for the backup Cloud Function"
+variable "backup_fn_uri" {
+  description = "URI of the Cloud Function to trigger for CloudSQL backup"
   type        = string
 }
 
-variable "backup_type" {
-  description = "Type of backup to trigger"
+variable "fn_backup_type" {
+  description = "The type of backup to perform, either 'export' for export backup or 'snapshot' for snapshot backup"
   type        = string
 }
 

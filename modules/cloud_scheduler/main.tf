@@ -1,19 +1,19 @@
 # Cloud Scheduler Job to trigger Cloud Function for CloudSQL backup
 
 resource "google_cloud_scheduler_job" "trigger_backup" {
-  name             = var.scheduler_name
-  description      = var.scheduler_description
-  schedule         = var.scheduler_schedule
-  time_zone        = var.scheduler_time_zone
+  name             = var.name
+  description      = var.description
+  schedule         = var.schedule
+  time_zone        = var.time_zone
   attempt_deadline = local.attempt_deadline
 
   http_target {
     http_method = local.http_method
-    uri         = var.fn_uri
+    uri         = var.backup_fn_uri
     headers = {
       "Content-Type" = local.content_type
     }
-    body = base64encode(jsonencode({ type = var.backup_type }))
+    body = base64encode(jsonencode({ type = var.fn_backup_type }))
     oidc_token {
       service_account_email = var.invoker_service_account_email
     }

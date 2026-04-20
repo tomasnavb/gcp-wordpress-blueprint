@@ -1,6 +1,6 @@
-resource "google_compute_instance" "vm" {
-  name         = var.vm_instance_name
-  machine_type = var.vm_machine_type
+resource "google_compute_instance" "gce_instance" {
+  name         = var.instance_name
+  machine_type = var.instance_machine_type
 
   tags = var.instance_tags
 
@@ -29,7 +29,7 @@ resource "google_compute_instance" "vm" {
   }
 
   service_account {
-    email  = var.vm_service_account_email
+    email  = var.instance_service_account_email
     scopes = local.sa_scope
   }
 

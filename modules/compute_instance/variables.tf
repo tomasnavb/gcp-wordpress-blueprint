@@ -1,10 +1,10 @@
-variable "vm_instance_name" {
+variable "instance_name" {
   description = "Name of the Compute Engine instance"
   type        = string
   default     = "wordpress-vm"
 }
 
-variable "vm_machine_type" {
+variable "instance_machine_type" {
   description = "Machine type for the VM instance"
   type        = string
   default     = "e2-medium"
@@ -62,7 +62,7 @@ variable "start_up_script_path" {
   type        = string
 }
 
-variable "vm_service_account_email" {
+variable "instance_service_account_email" {
   description = "Email of the service account to attach to the VM instance for authentication and permissions"
   type        = string
   default     = null

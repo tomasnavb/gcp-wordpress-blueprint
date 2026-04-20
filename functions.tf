@@ -36,11 +36,11 @@ module "export_db_scheduler" {
   depends_on = [google_project_service.gcp_services]
   source     = "./modules/cloud_scheduler"
 
-  scheduler_name                = "export-db-backup"
-  scheduler_description         = "Cloud Scheduler job to trigger Cloud Function for CloudSQL export backup"
-  scheduler_schedule            = "0 0 * * *" # Daily at midnight
-  fn_uri                        = google_cloudfunctions2_function.db_backup_function.https_trigger_url
-  backup_type                   = "export"
+  name                          = "export-db-backup"
+  description                   = "Cloud Scheduler job to trigger Cloud Function for CloudSQL export backup"
+  schedule                      = "0 0 * * *" # Daily at midnight
+  backup_fn_uri                 = google_cloudfunctions2_function.db_backup_function.https_trigger_url
+  fn_backup_type                = "export"
   invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
 }
 
@@ -48,11 +48,11 @@ module "snapshot_db_scheduler" {
   depends_on = [google_project_service.gcp_services]
   source     = "./modules/cloud_scheduler"
 
-  scheduler_name                = "snapshot-db-backup"
-  scheduler_description         = "Cloud Scheduler job to trigger Cloud Function for CloudSQL snapshot backup"
-  scheduler_schedule            = "0 */4 * * *" # Every 4 hours
-  fn_uri                        = google_cloudfunctions2_function.db_backup_function.https_trigger_url
-  backup_type                   = "snapshot"
+  name                          = "snapshot-db-backup"
+  description                   = "Cloud Scheduler job to trigger Cloud Function for CloudSQL snapshot backup"
+  schedule                      = "0 */4 * * *" # Every 4 hours
+  backup_fn_uri                 = google_cloudfunctions2_function.db_backup_function.https_trigger_url
+  fn_backup_type                = "snapshot"
   invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
 
 }

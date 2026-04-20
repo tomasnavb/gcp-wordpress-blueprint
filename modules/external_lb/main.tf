@@ -1,61 +1,61 @@
 # External Load Balancer Configuration
 
 // Subnet for external managed HTTP(S) LB proxies
-resource "google_compute_subnetwork" "external_lb_proxy" {
-  name          = var.external_lb_proxy_subnet_name
+resource "google_compute_subnetwork" "external_lb_subnet" {
+  name          = "${var.subnet_name}${local.lb_suffix}"
   network       = var.vpc_id
-  region        = var.region
-  ip_cidr_range = var.external_lb_proxy_subnet_cidr
-  purpose       = var.external_lb_proxy_subnet_purpose
-  role          = var.external_lb_proxy_subnet_role
+  region        = var.subnet_region
+  ip_cidr_range = var.subnet_cidr
+  purpose       = var.subnet_purpose
+  role          = var.subnet_role
 }
 
 // External IP for external managed LB
-resource "google_compute_address" "external_lb" {
-  name   = var.external_lb_ip_address_name
-  region = var.region
+resource "google_compute_address" "external_ip" {
+  name   = "${var.ip_address_name}${local.lb_suffix}"
+  region = var.ip_address_region
 }
 
 resource "google_compute_region_url_map" "external_lb_url_map" {
-  name   = "gcp-lb-demo-external-lb-url-map"
-  region = var.region
+  name   = "${var.url_map_name}${local.lb_suffix}"
+  region = var.subnet_region
 
   default_service = google_compute_region_backend_service.umig_backend.self_link
 
   depends_on = [
-    google_compute_subnetwork.external_lb_proxy
+    google_compute_subnetwork.external_lb_subnet
   ]
 }
 
-resource "google_compute_region_health_check" "umig" {
-  name   = "gcp-lb-demo-health-check-umig"
-  region = var.region
+resource "google_compute_region_health_check" "backend_health_check" {
+  name   = "${var.health_check_name}${local.lb_suffix}"
+  region = var.subnet_region
   http_health_check {
-    port = 80
+    port = var.http_health_check_port
   }
 }
 
 resource "google_compute_region_backend_service" "umig_backend" {
-  name                  = "gcp-lb-demo-backend-service"
-  region                = var.region
-  protocol              = "HTTP"
-  load_balancing_scheme = "EXTERNAL_MANAGED"
-  health_checks         = [google_compute_region_health_check.umig.self_link]
+  name                  = var.backend_service_name
+  region                = var.subnet_region
+  protocol              = var.backend_service_protocol
+  load_balancing_scheme = var.load_balancing_scheme
+  health_checks         = [google_compute_region_health_check.backend_health_check.self_link]
   backend {
     group = google_compute_instance_group.umig.self_link
   }
 
 }
 
-resource "google_compute_instance_group" "umig" {
-  name      = "umig-backend-group"
-  zone      = "${var.region}-a"
+resource "google_compute_instance_group" "umig_backend_group" {
+  name      = var.backend_group_name
+  zone      = "${var.subnet_region}-a"
   instances = var.umig_instances
 }
 
 resource "google_compute_region_target_http_proxy" "external_lb_http_proxy" {
-  name   = "gcp-lb-demo-external-lb-http-proxy"
-  region = var.region
+  name   = var.lb_name
+  region = var.subnet_region
 
   url_map = google_compute_region_url_map.external_lb_url_map.id
 

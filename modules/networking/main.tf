@@ -11,22 +11,21 @@ resource "google_compute_subnetwork" "subnet" {
 }
 
 resource "google_compute_firewall" "allow_ssh_icmp" {
-  name     = "${var.vpc_name}-allow-ssh-icmp"
+  name     = "${var.vpc_name}-allow-ssh-from-iap"
   network  = google_compute_network.vpc.self_link
   priority = 1000
 
-  allow {
-    protocol = "tcp"
-    ports    = [22]
+  dynamic "allow_ssh_from_iap" {
+    for_each = var.allow_ssh_from_iap ? [1] : []
+    content {
+      protocol = "tcp"
+      ports    = [22]
+    }
   }
 
-  allow {
-    protocol = "icmp"
-  }
+  direction = local.iap_allow_ssh_direciton
 
-  direction = "INGRESS"
-
-  source_ranges = ["35.235.240.0/20"]
+  source_ranges = local.iap_ip_ranges
 
   target_tags = ["iap-ssh-access"]
 
@@ -47,7 +46,11 @@ resource "google_compute_firewall" "allow_external_lb" {
 
   direction = "INGRESS"
 
-  source_ranges = ["35.191.0.0/16", "130.211.0.0/22"]
+  source_ranges = [
+    "35.191.0.0/16",
+    "130.211.0.0/22",
+    "10.128.0.0/23"
+  ]
 
   target_tags = ["backend-service"]
 }
