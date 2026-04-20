@@ -5,18 +5,26 @@ resource "google_cloud_scheduler_job" "trigger_backup" {
   description      = var.scheduler_description
   schedule         = var.scheduler_schedule
   time_zone        = var.scheduler_time_zone
-  attempt_deadline = "60s"
+  attempt_deadline = local.attempt_deadline
 
   http_target {
-    http_method = "POST"
+    http_method = local.http_method
     uri         = var.fn_uri
     headers = {
-      "Content-Type" = "application/json"
+      "Content-Type" = local.content_type
     }
     body = base64encode(jsonencode({ type = var.backup_type }))
     oidc_token {
       service_account_email = var.invoker_service_account_email
     }
+  }
+
+  retry_config {
+    retry_count          = local.retry_count
+    max_retry_duration   = local.max_retry_duration
+    min_backoff_duration = local.min_backoff_duration
+    max_backoff_duration = local.max_backoff_duration
+    max_doublings        = local.max_doublings
   }
 
 }

@@ -7,7 +7,7 @@ resource "google_compute_instance" "vm" {
   network_interface {
     network    = var.vpc_id
     subnetwork = var.subnet_id
-
+    stack_type = var.nic_stack_type
     dynamic "access_config" {
       for_each = has_external_ip ? [1] : []
       content {
@@ -30,7 +30,7 @@ resource "google_compute_instance" "vm" {
 
   service_account {
     email  = var.vm_service_account_email
-    scopes = ["cloud-platform"]
+    scopes = local.sa_scope
   }
 
 }

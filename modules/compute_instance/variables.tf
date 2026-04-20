@@ -25,6 +25,12 @@ variable "subnet_id" {
   type        = string
 }
 
+variable "nic_stack_type" {
+  description = "Stack type assigned to the VM's network interface"
+  type        = string
+  default     = "IPV4_ONLY"
+}
+
 variable "has_external_ip" {
   description = "Boolean flag to determine if the VM instance should have an external IP address"
   type        = bool
@@ -60,4 +66,8 @@ variable "vm_service_account_email" {
   description = "Email of the service account to attach to the VM instance for authentication and permissions"
   type        = string
   default     = null
+}
+
+locals {
+  sa_scope = ["cloud-platform"]
 }

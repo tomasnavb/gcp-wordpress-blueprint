@@ -18,7 +18,7 @@ resource "google_project_iam_member" "cloudsql_editor" {
 
 # IAM binding for the Cloud SQL instance's service account to have access to the Cloud Storage bucket for backups. 
 resource "google_storage_bucket_iam_member" "bucket_admin" {
-  bucket = google_storage_bucket.main.self_link
+  bucket = google_storage_bucket.cloudsql_backups.self_link
   role   = "role/storage.bucketAdmin"
   member = "serviceAccount:${google_sql_database_instance.main.service_account_email_address}"
 

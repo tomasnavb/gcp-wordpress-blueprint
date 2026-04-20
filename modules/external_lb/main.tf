@@ -2,17 +2,17 @@
 
 // Subnet for external managed HTTP(S) LB proxies
 resource "google_compute_subnetwork" "external_lb_proxy" {
-  name          = "gcp-lb-demo-sub-external-lb-proxy"
-  ip_cidr_range = var.external_lb_proxy_subnet_cidr
-  region        = var.region
+  name          = var.external_lb_proxy_subnet_name
   network       = var.vpc_id
-  purpose       = "REGIONAL_MANAGED_PROXY"
-  role          = "ACTIVE"
+  region        = var.region
+  ip_cidr_range = var.external_lb_proxy_subnet_cidr
+  purpose       = var.external_lb_proxy_subnet_purpose
+  role          = var.external_lb_proxy_subnet_role
 }
 
 // External IP for external managed LB
 resource "google_compute_address" "external_lb" {
-  name   = "gcp-lb-demo-ip-external-lb"
+  name   = var.external_lb_ip_address_name
   region = var.region
 }
 

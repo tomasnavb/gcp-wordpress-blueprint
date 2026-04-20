@@ -18,6 +18,11 @@ resource "google_sql_database_instance" "main" {
     disk_autoresize   = true
     disk_type         = var.db_disk_type
     disk_size         = var.db_disk_size
+
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = module.vpc_prod.vpc_id
+    }
   }
 
   lifecycle {
@@ -28,8 +33,7 @@ resource "google_sql_database_instance" "main" {
 
 resource "google_sql_database" "wordpress_db" {
   name     = "wordpress"
-  instance = google_sql_database_instance.main.name
-
+  instance = google_sql_database_instance.main
 }
 
 resource "google_sql_user" "wordpress" {

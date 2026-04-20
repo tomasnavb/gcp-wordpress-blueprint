@@ -8,6 +8,7 @@ module "vpc_prod" {
   subnet_region        = var.subnet_prod_region
   subnet_ip_cidr_range = var.subnet_prod_ip_cidr_range
   enable_nat           = true
+  allow_external_lb    = true
 }
 
 module "vpc_mgmt" {

@@ -26,11 +26,30 @@ resource "google_compute_firewall" "allow_ssh_icmp" {
 
   direction = "INGRESS"
 
-  source_ranges = [
-    "35.235.240.0/20",
-    google_compute_subnetwork.subnet.ip_cidr_range
-  ]
+  source_ranges = ["35.235.240.0/20"]
 
+  target_tags = ["iap-ssh-access"]
+
+}
+
+resource "google_compute_firewall" "allow_external_lb" {
+  name     = "${var.vpc_name}-allow-external-lb"
+  network  = google_compute_network.vpc.self_link
+  priority = 1000
+
+  dynamic "allow" {
+    for_each = var.allow_external_lb ? [1] : []
+    content {
+      protocol = "tcp"
+      ports    = ["80", "443"]
+    }
+  }
+
+  direction = "INGRESS"
+
+  source_ranges = ["35.191.0.0/16", "130.211.0.0/22"]
+
+  target_tags = ["backend-service"]
 }
 
 resource "google_compute_router" "vpc_router" {

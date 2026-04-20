@@ -28,3 +28,9 @@ variable "enable_nat" {
   type        = bool
 }
 
+variable "allow_external_lb" {
+  description = "Allow external Load Balancer IP ranges to communicate with backend services"
+  type        = bool
+  default     = false
+}
+

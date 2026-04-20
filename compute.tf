@@ -9,7 +9,7 @@ module "wordpress_vm_mgmt" {
   source                   = "./modules/compute_instance"
   vm_instance_name         = var.vm_mgmt_name
   vm_machine_type          = var.vm_mgmt_machine_type
-  instance_tags            = ["management", "no-external-ip"]
+  instance_tags            = ["management", "iap-ssh-access"]
   vpc_id                   = google_compute_network.mgmt.id
   subnet_id                = google_compute_subnetwork.mgmt.id
   start_up_script_path     = "${path.module}/scripts/startup-mgmt.sh"
@@ -25,7 +25,7 @@ module "wordpress_vm_prod" {
   source                   = "./modules/compute_instance"
   vm_instance_name         = var.vm_prod_name
   vm_machine_type          = var.vm_prod_machine_type
-  instance_tags            = ["production", "web-server", "no-external-ip"]
+  instance_tags            = ["backend-service", "iap-ssh-access"]
   vpc_id                   = google_compute_network.prod.id
   subnet_id                = google_compute_subnetwork.prod.id
   start_up_script_path     = "${path.module}/scripts/startup-prod.sh"

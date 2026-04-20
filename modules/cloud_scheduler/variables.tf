@@ -36,3 +36,16 @@ variable "invoker_service_account_email" {
   description = "Service account for the specific functions's invoker"
   type        = string
 }
+
+# Locals 
+
+locals {
+  attempt_deadline     = "60s"
+  http_method          = "POST"
+  content_type         = "application/json"
+  retry_count          = 3
+  max_retry_duration   = "300s"
+  min_backoff_duration = "10s"
+  max_backoff_duration = "60s"
+  max_doublings        = 2
+}
