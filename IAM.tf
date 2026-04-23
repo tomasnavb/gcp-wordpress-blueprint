@@ -46,8 +46,8 @@ resource "google_secret_manager_secret_iam_member" "prod_vm_role_binding" {
 the backup function according to the defined schedule. */
 resource "google_cloudfunctions2_function_iam_member" "fn_invoker_binding" {
   project        = var.project_id
-  location       = google_cloudfunctions2_function.db_backup_function.location
-  cloud_function = google_cloudfunctions2_function.db_backup_function.self_link
+  location       = google_cloudfunctions2_function.db_backup_fn.location
+  cloud_function = google_cloudfunctions2_function.db_backup_fn.self_link
   role           = "roles/cloudfunctions.invoker"
   member         = "serviceAccount:${google_service_account.scheduler_fn_invoker.email}"
 
