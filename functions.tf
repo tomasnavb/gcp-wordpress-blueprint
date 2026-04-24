@@ -3,7 +3,7 @@ resource "google_cloudfunctions2_function" "db_backup_fn" {
   depends_on  = [google_project_service.gcp_services]
   name        = var.function_name
   location    = var.function_region
-  description = "This functions manages the DB backup snapshots and exports"
+  description = var.function_description
 
   build_config {
     runtime     = local.function_runtime
@@ -22,7 +22,7 @@ resource "google_cloudfunctions2_function" "db_backup_fn" {
     service_account_email = google_service_account.cloudsql_backup_fn.email
     environment_variables = {
       GCP_PROJECT_ID          = var.project_id
-      CLOUD_SQL_INSTANCE_NAME = var.sql_instance_name
+      CLOUD_SQL_INSTANCE_NAME = var.instance_name
       BACKUP_BUCKET_NAME      = local.scripts_bucket_name
     }
   }
@@ -34,25 +34,26 @@ every 4 hours for 7 days retention for point-in-time recovery. Using default tim
 
 module "export_db_scheduler" {
   depends_on = [google_project_service.gcp_services]
-  source     = "./modules/cloud_scheduler"
+  source     = local.scheduler_module
 
-  name                          = "export-db-backup"
-  description                   = "Cloud Scheduler job to trigger Cloud Function for CloudSQL export backup"
-  schedule                      = "0 0 * * *" # Daily at midnight
+
+  name                          = local.scheduler_export_name
+  description                   = local.scheduler_export_description
+  schedule                      = local.scheduler_export_schedule # Daily at midnight
   backup_fn_uri                 = google_cloudfunctions2_function.db_backup_fn.https_trigger_url
-  fn_backup_type                = "export"
+  fn_backup_type                = local.scheduler_fn_backup_type[standard] # Standard for export backup for 90 days retention
   invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
 }
 
 module "snapshot_db_scheduler" {
   depends_on = [google_project_service.gcp_services]
-  source     = "./modules/cloud_scheduler"
+  source     = local.scheduler_module
 
-  name                          = "snapshot-db-backup"
-  description                   = "Cloud Scheduler job to trigger Cloud Function for CloudSQL snapshot backup"
-  schedule                      = "0 */4 * * *" # Every 4 hours
+  name                          = local.scheduler_snapshot_name
+  description                   = local.scheduler_snapshot_description
+  schedule                      = local.scheduler_snapshot_schedule # Every 4 hours
   backup_fn_uri                 = google_cloudfunctions2_function.db_backup_fn.https_trigger_url
-  fn_backup_type                = "snapshot"
+  fn_backup_type                = local.scheduler_fn_backup_type[fast] # Fast for snapshot backup for 7 days retention
   invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
 
 }

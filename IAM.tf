@@ -1,7 +1,7 @@
 # IAM bindings for the management VM to have access to IAP Tunnel.
 resource "google_project_iam_member" "iap_tunnel_access" {
   project = var.project_id
-  role    = "roles/iap.tunnelResourceAccesor"
+  role    = local.roles.iap_tunnel_accessor
   member  = "user:tomy.brm@gmail.com"
 
 }
@@ -11,16 +11,16 @@ Cloud SQL instances and connect to them securely. This is essential for the mana
 tasks on the Cloud SQL database, such as running maintenance scripts or managing database users. */
 resource "google_project_iam_member" "cloudsql_editor" {
   project = var.project_id
-  role    = "role/cloudsql.editor"
-  member  = "serviceAccount:${google_service_account.mgmt_vm.email}"
+  role    = local.roles.cloudsql_editor
+  member  = locals.service_accounts.mgmt
 
 }
 
 # IAM binding for the Cloud SQL instance's service account to have access to the Cloud Storage bucket for backups. 
 resource "google_storage_bucket_iam_member" "bucket_admin" {
   bucket = google_storage_bucket.cloudsql_backups.self_link
-  role   = "role/storage.bucketAdmin"
-  member = "serviceAccount:${google_sql_database_instance.main.service_account_email_address}"
+  role   = local.roles.bucket_admin
+  member = local.service_accounts.sql_instance
 
 }
 
@@ -29,16 +29,16 @@ permissions to manage Cloud SQL instances. */
 resource "google_project_iam_member" "cloudsql_backup_fn_role_binding" {
   project = var.project_id
   role    = google_project_iam_custom_role.fn_db_backup.self_link
-  member  = "serviceAccount:${google_service_account.cloudsql_backup_fn.email}"
+  member  = local.service_accounts.fn
 
 }
 
 # IAM binding for the production VM's service account to have access to the database password stored in Secret Manager. 
 resource "google_secret_manager_secret_iam_member" "prod_vm_role_binding" {
   project   = var.project_id
-  role      = "roles/secretmanager.secretAccessor"
+  role      = local.roles.secret_manager_accessor
   secret_id = google_secret_manager_secret.db_password.id
-  member    = "serviceAccount:${google_service_account.prod_vm.email}"
+  member    = local.service_accounts.prod
 
 }
 
@@ -48,8 +48,8 @@ resource "google_cloudfunctions2_function_iam_member" "fn_invoker_binding" {
   project        = var.project_id
   location       = google_cloudfunctions2_function.db_backup_fn.location
   cloud_function = google_cloudfunctions2_function.db_backup_fn.self_link
-  role           = "roles/cloudfunctions.invoker"
-  member         = "serviceAccount:${google_service_account.scheduler_fn_invoker.email}"
+  role           = local.roles.fn_invoker
+  member         = local.service_accounts.scheduler
 
 }
 
@@ -84,16 +84,10 @@ resource "google_service_account" "cloudsql_backup_fn" {
 /* IAM Custom Role for Cloud Function for Cloud SQL backup, granting necessary permissions to manage 
 Cloud SQL instances and backups. */
 resource "google_project_iam_custom_role" "fn_db_backup" {
-  role_id     = "dbBackupRole"
-  title       = "Database Backup Role"
-  description = "Custom role for Cloud Function to backup CloudSQL database to Cloud Storage"
-  permissions = [
-    "cloudsql.instances.get",
-    "cloudsql.instances.list",
-    "cloudsql.backupRuns.create",
-    "cloudsql.backupRuns.list",
-    "cloudsql.backupRuns.get"
-  ]
+  role_id     = locals.roles.custom_db_backup_role.id
+  title       = locals.roles.custom_db_backup_role.title
+  description = locals.roles.custom_db_backup_role.description
+  permissions = locals.roles.custom_db_backup_role.permissions
 }
 
 

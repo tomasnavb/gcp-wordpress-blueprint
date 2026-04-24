@@ -1,10 +1,3 @@
-resource "google_project_service" "secretmanager" {
-  depends_on         = [google_project_service.gcp_services]
-  project            = var.project_id
-  service            = local.secret_manager_service
-  disable_on_destroy = false
-}
-
 # Database password secret
 resource "google_secret_manager_secret" "db_password" {
   secret_id           = "database-password"
@@ -22,16 +15,9 @@ resource "google_secret_manager_secret" "db_password" {
   depends_on = [google_project_service.secretmanager]
 }
 
-# Generate a random password for the database
-resource "random_password" "db_password" {
-  length           = 32
-  special          = true
-  override_special = "!#$%^&*()-_=+[]{}<>:?"
-}
-
 # Store the password as a secret version
 resource "google_secret_manager_secret_version" "db_password" {
-  secret = google_secret_manager_secret.db_password.id
+  secret = google_secret_manager_secret.db_password.secret_id
   secret_data = jsonencode({
     db_name                  = var.db_name
     db_user                  = var.db_user
