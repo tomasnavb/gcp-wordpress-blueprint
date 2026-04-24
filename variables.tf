@@ -14,13 +14,13 @@ variable "project_id" {
 variable "project_region" {
   description = "Google Cloud project region"
   type        = string
-  default     = "us-central1"
+  default     = "europe-west9"
 }
 
 variable "project_zone" {
   description = "Google Cloud project zone"
   type        = string
-  default     = "us-central1-a"
+  default     = "europe-west9"
 }
 
 ###############################################################################
@@ -40,7 +40,7 @@ variable "subnet_prod_name" {
 variable "subnet_prod_region" {
   description = "value"
   type        = string
-  default     = "us-central1"
+  default     = "europe-west9"
 
 }
 
@@ -65,7 +65,7 @@ variable "subnet_mgmt_name" {
 variable "subnet_mgmt_region" {
   description = "value"
   type        = string
-  default     = "us-central1"
+  default     = "europe-west9"
 
 }
 
@@ -120,7 +120,7 @@ variable "instance_name" {
 variable "instance_region" {
   description = "Region for the CloudSQL production database"
   type        = string
-  default     = "us-central1"
+  default     = "europe-west9"
 }
 
 variable "instance_version" {
@@ -219,7 +219,7 @@ variable "function_description" {
 variable "function_region" {
   description = "Region for the CloudSQL backup function"
   type        = string
-  default     = "europe-west8"
+  default     = "europe-west9"
 }
 
 variable "function_timeout_sec" {
