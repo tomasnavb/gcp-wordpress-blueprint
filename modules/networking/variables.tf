@@ -41,6 +41,27 @@ variable "allow_external_lb" {
 }
 
 locals {
-  iap_allow_ssh_direciton = "INGRESS"
+  auto_create_subnets     = false
+  iap_allow_ssh_direction = "INGRESS"
   iap_ip_ranges           = ["35.235.240.0/20"]
+  allow_ssh_iap_name      = "allow-iap-ssh"
+  allow_external_lb_name  = "allow-external-lb"
+  default_priority        = 1000
+  tcp_traffic_port        = 80
+  tcp_protocol            = "tcp"
+  ingress_fr              = "INGRESS"
+  ssh_port                = 22
+  iap_target_tags         = ["iap-ssh-access"]
+  lb_source_ranges = [
+    "35.191.0.0/16",
+    "130.211.0.0/22",
+    "10.128.0.0/23"
+  ]
+  backend_tags             = ["backend-service"]
+  router_name              = "${var.vpc_name}-router"
+  nat_name                 = "${google_compute_router.vpc_router.name}-nat"
+  nat_ip_allocation_option = "AUTO_ONLY"
+  nat_source_subnets       = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+  enable_log_config        = true
+  log_filter               = "ERRORS_ONLY"
 }

@@ -12,7 +12,7 @@ tasks on the Cloud SQL database, such as running maintenance scripts or managing
 resource "google_project_iam_member" "cloudsql_editor" {
   project = var.project_id
   role    = local.roles.cloudsql_editor
-  member  = locals.service_accounts.mgmt
+  member  = local.service_accounts.mgmt
 
 }
 
@@ -84,10 +84,10 @@ resource "google_service_account" "cloudsql_backup_fn" {
 /* IAM Custom Role for Cloud Function for Cloud SQL backup, granting necessary permissions to manage 
 Cloud SQL instances and backups. */
 resource "google_project_iam_custom_role" "fn_db_backup" {
-  role_id     = locals.roles.custom_db_backup_role.id
-  title       = locals.roles.custom_db_backup_role.title
-  description = locals.roles.custom_db_backup_role.description
-  permissions = locals.roles.custom_db_backup_role.permissions
+  role_id     = local.roles.custom_db_backup_role.id
+  title       = local.roles.custom_db_backup_role.title
+  description = local.roles.custom_db_backup_role.description
+  permissions = local.roles.custom_db_backup_role.permissions
 }
 
 

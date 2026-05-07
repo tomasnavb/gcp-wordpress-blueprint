@@ -9,7 +9,7 @@ resource "google_compute_instance" "gce_instance" {
     subnetwork = var.subnet_id
     stack_type = var.nic_stack_type
     dynamic "access_config" {
-      for_each = has_external_ip ? [1] : []
+      for_each = var.has_external_ip ? [1] : []
       content {
       }
 

@@ -5,7 +5,7 @@ variable "subnet_name" {
 
 }
 
-variable "subnet_region" {
+variable "region" {
   type = string
 }
 
@@ -42,7 +42,7 @@ variable "ip_address_name" {
 variable "ip_address_region" {
   description = "Region where the external load balancer and its components will be created"
   type        = string
-  default     = "us-central1"
+  default     = "europe-west9"
 }
 
 variable "url_map_name" {
@@ -93,6 +93,12 @@ variable "listener_port" {
   default     = 80
 }
 
+variable "umig_zone" {
+  description = "Specified zone for the Unamanged Instance Group"
+  type        = string
+  default     = "europe-west9"
+}
+
 variable "umig_instances" {
   description = "List of instances to add on the umig instances group"
   type        = list(string)
@@ -105,5 +111,7 @@ variable "lb_name" {
 }
 
 locals {
-  lb_suffix = "-external-lb"
+  lb_suffix      = "-external-lb"
+  fr_full_name   = "${var.lb_name}-forwarding-rule"
+  fr_ip_protocol = "TCP"
 }

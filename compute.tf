@@ -9,8 +9,8 @@ module "wordpress_vm_mgmt" {
   source                         = "./modules/compute_instance"
   instance_name                  = var.vm_mgmt_name
   instance_machine_type          = var.vm_mgmt_machine_type
-  instance_tags                  = ["management", "iap-ssh-access"]
-  vpc_id                         = google_compute_network.mgmt.id
+  instance_tags                  = local.vm_mgmt_tags
+  vpc_id                         = module.vpc_mgmt.id
   subnet_id                      = google_compute_subnetwork.mgmt.id
   start_up_script_path           = local.vm_mgmt_startup_script_path
   instance_service_account_email = google_service_account.wordpress_vm_mgmt.email
@@ -25,8 +25,8 @@ module "wordpress_vm_prod" {
   source                         = "./modules/compute_instance"
   instance_name                  = var.vm_prod_name
   instance_machine_type          = var.vm_prod_machine_type
-  instance_tags                  = ["backend-service", "iap-ssh-access"]
-  vpc_id                         = google_compute_network.prod.id
+  instance_tags                  = local.vm_prod_tags
+  vpc_id                         = module.vpc_prod.id
   subnet_id                      = google_compute_subnetwork.prod.id
   start_up_script_path           = local.vm_prod_startup_script_path
   instance_service_account_email = google_service_account.prod_vm.email
@@ -36,9 +36,9 @@ module "wordpress_vm_prod" {
 /* External Load Balancer for the wordpress_vm_prod*/
 module "external_lb" {
   source         = "./modules/external_lb"
-  subnet_region  = var.subnet_prod_region
+  region         = var.subnet_prod_region
   vpc_id         = google_compute_network.prod.id
   subnet_cidr    = var.external_lb_proxy_subnet_cidr
-  umig_instances = [module.vm_instance_prod.vm_self_link]
+  umig_instances = [module.wordpress_vm_prod.vm_self_link]
 
 }
