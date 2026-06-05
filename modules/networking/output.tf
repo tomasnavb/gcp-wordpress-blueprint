@@ -16,6 +16,12 @@ output "subnet_name" {
 
 }
 
+output "subnet_id" {
+  description = "The ID of the subnet"
+  value       = google_compute_subnetwork.subnet.id
+
+}
+
 output "subnet_network" {
   description = "The VPC network to which the subnet belongs"
   value       = google_compute_subnetwork.subnet.network

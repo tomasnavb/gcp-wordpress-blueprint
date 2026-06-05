@@ -12,5 +12,5 @@ variable "project_region" {
 variable "project_zone" {
   description = "Google Cloud project zone"
   type        = string
-  default     = "europe-west9"
+  default     = "europe-west9-a"
 }

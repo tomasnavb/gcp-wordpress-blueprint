@@ -22,7 +22,7 @@ resource "google_compute_forwarding_rule" "external_lb" {
   target      = google_compute_region_target_http_proxy.external_lb_http_proxy.self_link
   ip_address  = google_compute_address.external_ip.self_link
   region      = var.region
-  ip_protocol = local.fw.fr_ip_protocol
+  ip_protocol = local.fr_ip_protocol
   port_range  = var.listener_port
 
 

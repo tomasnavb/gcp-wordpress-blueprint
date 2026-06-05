@@ -10,8 +10,8 @@ resource "google_cloudfunctions2_function" "db_backup_fn" {
     entry_point = local.function_entry_point
     source {
       storage_source {
-        bucket = google_storage_bucket.scripts.self_link
-        object = google_storage_bucket_object.function_code.self_link
+        bucket = google_storage_bucket.scripts.name
+        object = google_storage_bucket_object.function_code.name
 
       }
     }
@@ -23,7 +23,7 @@ resource "google_cloudfunctions2_function" "db_backup_fn" {
     environment_variables = {
       GCP_PROJECT_ID          = var.project_id
       CLOUD_SQL_INSTANCE_NAME = var.instance_name
-      BACKUP_BUCKET_NAME      = local.scripts_bucket_name
+      BACKUP_BUCKET_NAME      = local.db_backup_bucket_name
     }
   }
 

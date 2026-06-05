@@ -12,7 +12,7 @@ resource "google_secret_manager_secret" "db_password" {
     application = "wordpress-instances"
   }
 
-  depends_on = [google_project_service.secretmanager]
+  depends_on = [google_project_service.gcp_services]
 }
 
 # Store the password as a secret version

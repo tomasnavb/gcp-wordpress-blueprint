@@ -9,6 +9,7 @@ module "vpc_prod" {
   subnet_ip_cidr_range = var.subnet_prod_ip_cidr_range
   enable_nat           = true
   allow_external_lb    = true
+  allow_ssh_from_iap   = true
 }
 
 module "vpc_mgmt" {
@@ -20,6 +21,7 @@ module "vpc_mgmt" {
   subnet_region        = var.subnet_mgmt_region
   subnet_ip_cidr_range = var.subnet_mgmt_ip_cidr_range
   enable_nat           = true
+  allow_ssh_from_iap   = true
 }
 
 resource "google_compute_network_peering" "peering-prod-mgmt" {

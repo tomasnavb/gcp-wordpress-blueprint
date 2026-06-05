@@ -11,9 +11,9 @@ module "wordpress_vm_mgmt" {
   instance_machine_type          = var.vm_mgmt_machine_type
   instance_tags                  = local.vm_mgmt_tags
   vpc_id                         = module.vpc_mgmt.id
-  subnet_id                      = google_compute_subnetwork.mgmt.id
+  subnet_id                      = module.vpc_mgmt.subnet_id
   start_up_script_path           = local.vm_mgmt_startup_script_path
-  instance_service_account_email = google_service_account.wordpress_vm_mgmt.email
+  instance_service_account_email = google_service_account.mgmt_vm.email
 }
 
 /* Wordpress Production VM - This instance is dedicated to serving the site's web traffic. It connects to the Cloud SQL database
@@ -27,7 +27,7 @@ module "wordpress_vm_prod" {
   instance_machine_type          = var.vm_prod_machine_type
   instance_tags                  = local.vm_prod_tags
   vpc_id                         = module.vpc_prod.id
-  subnet_id                      = google_compute_subnetwork.prod.id
+  subnet_id                      = module.vpc_prod.subnet_id
   start_up_script_path           = local.vm_prod_startup_script_path
   instance_service_account_email = google_service_account.prod_vm.email
 

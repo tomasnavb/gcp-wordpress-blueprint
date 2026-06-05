@@ -7,6 +7,10 @@ terraform {
       version = "7.25.0"
     }
   }
+  backend "gcs" {
+    bucket = "my-org-terraform-backend"
+    prefix = "environments/prod/networking"
+  }
 }
 
 provider "google" {

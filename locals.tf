@@ -48,7 +48,6 @@ locals {
   prevent_instance_destroy    = true
 
   # Cloud Scheduler
-  scheduler_module               = "${path.module}/modules/cloud_scheduler"
   scheduler_export_name          = "export-db-backup"
   scheduler_export_description   = "Cloud Scheduler job to trigger Cloud Function for CloudSQL export backup"
   scheduler_export_schedule      = "0 0 * * *" # Daily at midnight
