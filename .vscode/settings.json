@@ -1,6 +1,0 @@
-{
-    "tflint.excludeRules": [
-        "terraform_required_providers",
-        "terraform_required_version"
-    ]
-}
