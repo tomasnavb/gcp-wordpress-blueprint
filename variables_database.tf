@@ -1,6 +1,7 @@
 variable "instance_name" {
   description = "Name for the CloudSQL production database"
   type        = string
+  default     = "prod-wordpress"
 }
 
 variable "instance_region" {

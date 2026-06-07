@@ -14,6 +14,7 @@ module "wordpress_vm_mgmt" {
   subnet_id                      = module.vpc_mgmt.subnet_id
   start_up_script_path           = local.vm_mgmt_startup_script_path
   instance_service_account_email = google_service_account.mgmt_vm.email
+  boot_disk_image                = var.vm_boot_disk_image
 }
 
 /* Wordpress Production VM - This instance is dedicated to serving the site's web traffic. It connects to the Cloud SQL database
@@ -30,15 +31,51 @@ module "wordpress_vm_prod" {
   subnet_id                      = module.vpc_prod.subnet_id
   start_up_script_path           = local.vm_prod_startup_script_path
   instance_service_account_email = google_service_account.prod_vm.email
+  boot_disk_image                = var.vm_boot_disk_image
+
+}
+
+# MIG
+module "wordpress_regional_mig" {
+  source = "./modules/mig"
+
+  # Basic configs
+  lb_utilization_target     = "."
+  disk_size_gb              = 10
+  min_replicas              = 1
+  max_replicas              = 3
+  image_family              = "tanto"
+  subnetwork                = ""
+  request_path              = ""
+  mig_name                  = ""
+  name_prefix               = ""
+  region                    = ""
+  base_instance_name        = ""
+  health_check_port         = ""
+  autoscaler_region         = ""
+  time_window_sec           = ""
+  distribution_policy_zones = ""
+  tags                      = ""
+  cooldown_period           = ""
+  healthy_threshold         = ""
+  max_scaled_in_replicas    = ""
+  health_check_name         = ""
+  network                   = ""
+  project_id                = ""
+  check_interval_sec        = 1
+  autoscaler_name           = ""
+  unhealthy_threshold       = ""
+  timeout_sec               = ""
 
 }
 
 /* External Load Balancer for the wordpress_vm_prod*/
 module "external_lb" {
-  source         = "./modules/external_lb"
-  region         = var.subnet_prod_region
-  vpc_id         = google_compute_network.prod.id
-  subnet_cidr    = var.external_lb_proxy_subnet_cidr
-  umig_instances = [module.wordpress_vm_prod.vm_self_link]
+  source                = "./modules/external_lb"
+  region                = var.subnet_prod_region
+  dedicated_subnet_cidr = var.lb_dedicated_ip_cidr
+  balancing_mode        = "RATE"
+  mig_instance_group    = "MIG"
+  vpc_id                = module.vpc_prod.id
 
 }

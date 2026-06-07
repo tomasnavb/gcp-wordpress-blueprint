@@ -14,17 +14,9 @@ variable "vpc_id" {
   type        = string
 }
 
-variable "subnet_cidr" {
+variable "dedicated_subnet_cidr" {
   description = "CIDR block for the external LB proxy-only subnet (REGIONAL_MANAGED_PROXY)"
   type        = string
-  default     = "10.128.0.0/23"
-}
-
-variable "subnet_purpose" {
-  description = "The purpose of the subnet"
-  type        = string
-  default     = "REGIONAL_MANAGED_PROXY"
-
 }
 
 variable "subnet_role" {
@@ -37,12 +29,6 @@ variable "ip_address_name" {
   description = "The external IP assigned to the External Load Balancer Proxy"
   type        = string
   default     = "external-proxy-lb-ip"
-}
-
-variable "ip_address_region" {
-  description = "Region where the external load balancer and its components will be created"
-  type        = string
-  default     = "europe-west9"
 }
 
 variable "url_map_name" {
@@ -69,10 +55,9 @@ variable "backend_service_name" {
   default     = "backend-service"
 }
 
-variable "backend_group_name" {
-  description = "Name for the backend instance group"
+variable "mig_instance_group" {
+  description = "Self link of the instance group"
   type        = string
-  default     = "backend-group"
 }
 
 variable "backend_service_protocol" {
@@ -93,16 +78,17 @@ variable "listener_port" {
   default     = 80
 }
 
-variable "umig_zone" {
-  description = "Specified zone for the Unamanged Instance Group"
+variable "balancing_mode" {
+  description = "Balacing mode type"
   type        = string
-  default     = "europe-west9"
 }
 
-variable "umig_instances" {
-  description = "List of instances to add on the umig instances group"
-  type        = list(string)
+variable "capacity_scaler" {
+  description = "Capacity scaler value"
+  type        = number
+  default     = 1.0
 }
+
 
 variable "lb_name" {
   description = "Name for the load balancer"
@@ -111,7 +97,9 @@ variable "lb_name" {
 }
 
 locals {
-  lb_suffix      = "-external-lb"
-  fr_full_name   = "${var.lb_name}-forwarding-rule"
-  fr_ip_protocol = "TCP"
+  subnet_purpose        = "REGIONAL_MANAGED_PROXY"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  lb_suffix             = "-external-lb"
+  fr_full_name          = "${var.lb_name}-forwarding-rule"
+  ip_protocol           = "TCP"
 }

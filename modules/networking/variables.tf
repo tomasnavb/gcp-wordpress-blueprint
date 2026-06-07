@@ -59,7 +59,7 @@ locals {
   ]
   backend_tags             = ["backend-service"]
   router_name              = "${var.vpc_name}-router"
-  nat_name                 = "${google_compute_router.vpc_router.name}-nat"
+  nat_name                 = "${google_compute_router.vpc_router[0].name}-nat"
   nat_ip_allocation_option = "AUTO_ONLY"
   nat_source_subnets       = "ALL_SUBNETWORKS_ALL_IP_RANGES"
   enable_log_config        = true
