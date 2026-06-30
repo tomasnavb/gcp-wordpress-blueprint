@@ -13,7 +13,7 @@ Production-grade WordPress infrastructure on Google Cloud Platform, fully provis
 
 ## Architecture
 
-![Architecture Diagram](docs/architecture.png)
+![Architecture Diagram](docs/architecture.jpeg)
 
 ### Overview
 
