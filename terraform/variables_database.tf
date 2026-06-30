@@ -1,84 +1,61 @@
 variable "instance_name" {
-  description = "Name for the CloudSQL production database"
+  description = "Name for the Cloud SQL production instance"
   type        = string
-  default     = "prod-wordpress"
 }
 
 variable "instance_region" {
-  description = "Region for the CloudSQL production database"
+  description = "GCP region for the Cloud SQL instance"
   type        = string
-  default     = "europe-west9"
-}
-
-variable "instance_version" {
-  description = "CloudSQL database engine MySQL"
-  type        = string
-  default     = "MYSQL_8_4"
-}
-
-variable "enable_instance_deletion_protection" {
-  description = "Deletion protection for CloudSQL instance to prevent accidental deletion"
-  type        = bool
-  default     = true
-}
-
-variable "enable_instance_disk_autoresize" {
-  description = "Enable disk autoresize for CloudSQL instance to allow automatic resizing when disk space is low"
-  type        = bool
-  default     = false
 }
 
 variable "instance_tier" {
-  description = "Machine type for CloudSQL instance (db-custom-4-16384, 4 vCPU, 16 GB RAM for moderate traffic)"
+  description = "Machine type for the Cloud SQL instance (e.g. db-custom-2-4096 for 2 vCPU / 4 GB RAM)"
   type        = string
-  default     = "db-custom-4-16384"
 }
 
 variable "instance_edition" {
-  description = "Edition for the CloudSQL instance (ENTERPRISE sufficient for general machine usage)"
+  description = "Cloud SQL edition (ENTERPRISE or ENTERPRISE_PLUS)"
   type        = string
   default     = "ENTERPRISE"
 }
 
 variable "instance_availability_type" {
-  description = "Availability type for CloudSQL instance (REGIONAL for high-availability)"
+  description = "Availability type for the Cloud SQL instance (REGIONAL for HA, ZONAL for single-zone)"
   type        = string
   default     = "REGIONAL"
 }
 
 variable "instance_disk_type" {
-  description = "value"
+  description = "Disk type for the Cloud SQL instance (PD_SSD or PD_HDD)"
   type        = string
   default     = "PD_SSD"
 }
 
 variable "instance_disk_size_gb" {
-  description = "Initial disk size for CloudSQL instance (100 GB recommended for moderate traffic)"
+  description = "Initial disk size in GB (disk_autoresize will grow it automatically)"
   type        = number
-  default     = 100
-
 }
 
 variable "db_name" {
-  description = "Name for the Wordpress database to be created within the CloudSQL instance"
+  description = "Name of the MySQL database created for WordPress"
   type        = string
   default     = "wordpress"
 }
 
 variable "db_charset" {
-  description = "Character set for the Wordpress database"
+  description = "Character set for the WordPress database"
   type        = string
   default     = "utf8mb4"
 }
 
 variable "db_collation" {
-  description = "Collation for the Wordpress database"
+  description = "Collation for the WordPress database"
   type        = string
   default     = "utf8mb4_unicode_ci"
 }
 
 variable "db_user" {
-  description = "Username for the Wordpress database user"
+  description = "Username for the WordPress application database user"
   type        = string
   default     = "wordpress"
 }

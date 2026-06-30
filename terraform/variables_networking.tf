@@ -1,47 +1,43 @@
+# Production VPC
 variable "vpc_prod_name" {
-  description = "Main name for the VPC production network"
+  description = "Name for the production VPC network"
   type        = string
 }
 
 variable "subnet_prod_name" {
-  description = ""
+  description = "Name for the production subnet"
   type        = string
 }
 
 variable "subnet_prod_region" {
-  description = "value"
+  description = "GCP region for the production subnet"
   type        = string
-  default     = "europe-west9"
-
 }
 
 variable "subnet_prod_ip_cidr_range" {
-  description = "value"
+  description = "IP CIDR range for the production subnet"
   type        = string
   default     = "10.0.0.0/24"
 }
 
-
+# Management VPC
 variable "vpc_mgmt_name" {
-  description = "Main name for the VPC management network"
+  description = "Name for the management VPC network"
   type        = string
 }
 
 variable "subnet_mgmt_name" {
-  description = "value"
+  description = "Name for the management subnet"
   type        = string
-
 }
 
 variable "subnet_mgmt_region" {
-  description = "value"
+  description = "GCP region for the management subnet"
   type        = string
-  default     = "europe-west9"
-
 }
 
 variable "subnet_mgmt_ip_cidr_range" {
-  description = "value"
+  description = "IP CIDR range for the management subnet"
   type        = string
   default     = "192.168.1.0/24"
 }

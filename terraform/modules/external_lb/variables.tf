@@ -1,105 +1,84 @@
-variable "subnet_name" {
-  description = "Name for the subnet specific to the Load Balancer"
-  type        = string
-  default     = "lb-default-subnet"
-
-}
-
 variable "region" {
-  type = string
+  description = "GCP region for all load balancer resources"
+  type        = string
 }
 
 variable "vpc_id" {
-  description = "VPC ID (self link) where the external LB proxy-only subnet is created"
+  description = "Self-link of the VPC network where the proxy-only subnet and forwarding rule are created"
   type        = string
 }
 
 variable "dedicated_subnet_cidr" {
-  description = "CIDR block for the external LB proxy-only subnet (REGIONAL_MANAGED_PROXY)"
+  description = "IP CIDR block for the proxy-only subnet (REGIONAL_MANAGED_PROXY purpose)"
+  type        = string
+}
+
+variable "subnet_name" {
+  description = "Base name for the proxy-only subnet (the module appends '-external-lb' as suffix)"
   type        = string
 }
 
 variable "subnet_role" {
-  description = "Role for the subnet. Active for currently in use for Envoy-based load-balancer"
+  description = "Role for the proxy-only subnet (ACTIVE for the subnet currently handling traffic)"
   type        = string
-  default     = "ACTIVE"
 }
 
 variable "ip_address_name" {
-  description = "The external IP assigned to the External Load Balancer Proxy"
+  description = "Base name for the reserved external IP address resource (module appends '-external-lb')"
   type        = string
-  default     = "external-proxy-lb-ip"
+}
+
+variable "lb_name" {
+  description = "Name for the regional HTTP proxy (also used as base for the forwarding rule name)"
+  type        = string
+}
+
+variable "listener_port" {
+  description = "External port the load balancer listens on (e.g. 80 for HTTP)"
+  type        = number
 }
 
 variable "url_map_name" {
-  description = "Name for the URL map resource"
+  description = "Base name for the URL map resource (module appends '-external-lb')"
   type        = string
-  default     = "url-map"
 }
 
 variable "health_check_name" {
-  description = "Name for the health check resource"
+  description = "Base name for the regional health check resource (module appends '-external-lb')"
   type        = string
-  default     = "health-check"
 }
 
 variable "http_health_check_port" {
-  description = "Port number for the HTTP health check"
+  description = "TCP port the regional health check probes on the backend instances"
   type        = number
-  default     = 80
 }
 
 variable "backend_service_name" {
-  description = "Name for the backend service resource"
-  type        = string
-  default     = "backend-service"
-}
-
-variable "mig_instance_group" {
-  description = "Self link of the instance group"
+  description = "Name for the regional backend service resource"
   type        = string
 }
 
 variable "backend_service_protocol" {
-  description = "Protocol for the backend service"
+  description = "Protocol used between the load balancer and backend instances (HTTP or HTTPS)"
   type        = string
-  default     = "HTTP"
 }
 
 variable "load_balancing_scheme" {
-  description = "Load balancing scheme for the backend service"
+  description = "Load balancing scheme applied to both the forwarding rule and backend service (EXTERNAL_MANAGED)"
   type        = string
-  default     = "EXTERNAL_MANAGED"
 }
 
-variable "listener_port" {
-  description = "External port that the regional HTTP(S) load balancer listens on (e.g. 80)"
-  type        = number
-  default     = 80
+variable "mig_instance_group" {
+  description = "Self-link of the regional MIG instance group to attach as the backend"
+  type        = string
 }
 
 variable "balancing_mode" {
-  description = "Balacing mode type"
+  description = "Backend balancing mode: RATE (requests per second) or UTILIZATION (CPU)"
   type        = string
 }
 
 variable "capacity_scaler" {
-  description = "Capacity scaler value"
+  description = "Multiplier applied to the backend's capacity (1.0 = 100%)"
   type        = number
-  default     = 1.0
-}
-
-
-variable "lb_name" {
-  description = "Name for the load balancer"
-  type        = string
-  default     = "http-proxy-external-lb"
-}
-
-locals {
-  subnet_purpose        = "REGIONAL_MANAGED_PROXY"
-  load_balancing_scheme = "EXTERNAL_MANAGED"
-  lb_suffix             = "-external-lb"
-  fr_full_name          = "${var.lb_name}-forwarding-rule"
-  ip_protocol           = "TCP"
 }

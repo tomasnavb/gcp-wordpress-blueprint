@@ -39,7 +39,7 @@ resource "google_storage_bucket" "scripts" {
   depends_on    = [google_project_service.gcp_services]
   name          = local.scripts_bucket_name
   location      = "EU"
-  storage_class = "ARCHIVE"
+  storage_class = "STANDARD"
 
 }
 

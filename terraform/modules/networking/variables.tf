@@ -1,19 +1,20 @@
-# VPC network variables
 variable "vpc_name" {
   description = "Name of the VPC network"
   type        = string
-  default     = "wordpress-site-vpc"
-
 }
 
-# Subnet variables
+variable "auto_create_subnets" {
+  description = "Whether to auto-create subnetworks (always false for custom-mode VPCs)"
+  type        = bool
+}
+
 variable "subnet_name" {
   description = "Name of the subnet"
   type        = string
 }
 
-variable "subnet_region" {
-  description = "Region of the subnet"
+variable "region" {
+  description = "Region for the subnet, Cloud Router, and Cloud NAT"
   type        = string
 }
 
@@ -22,46 +23,62 @@ variable "subnet_ip_cidr_range" {
   type        = string
 }
 
-# Cloud Router variables
 variable "enable_nat" {
-  description = "Whether to enable NAT for the Cloud Router"
+  description = "Whether to create a Cloud Router and Cloud NAT for outbound internet access"
   type        = bool
+}
+
+variable "nat_ip_allocate_option" {
+  description = "How external IPs are allocated for NAT (AUTO_ONLY or MANUAL_ONLY)"
+  type        = string
+}
+
+variable "source_subnetwork_ip_ranges_to_nat" {
+  description = "Which subnet IP ranges are subject to NAT translation"
+  type        = string
+}
+
+variable "enable_nat_log_config" {
+  description = "Whether to enable Cloud NAT logging"
+  type        = bool
+}
+
+variable "nat_log_filter" {
+  description = "NAT log filter level (ALL, ERRORS_ONLY, or TRANSLATIONS_ONLY)"
+  type        = string
 }
 
 variable "allow_ssh_from_iap" {
-  description = "Allow IAP TCP forwarding from the external LB to the backend instances"
+  description = "Whether to create a firewall rule allowing SSH access via IAP"
   type        = bool
-  default     = false
+}
+
+variable "iap_fw_rule_priority" {
+  description = "Priority for the IAP SSH firewall rule (lower number = higher priority)"
+  type        = number
+}
+
+variable "iap_target_tags" {
+  description = "Network tags that the IAP SSH firewall rule applies to"
+  type        = list(string)
 }
 
 variable "allow_external_lb" {
-  description = "Allow external Load Balancer IP ranges to communicate with backend services"
+  description = "Whether to create firewall rules for external LB health checks and proxy traffic"
   type        = bool
-  default     = false
 }
 
-locals {
-  auto_create_subnets     = false
-  iap_allow_ssh_direction = "INGRESS"
-  iap_ip_ranges           = ["35.235.240.0/20"]
-  allow_ssh_iap_name      = "allow-iap-ssh"
-  allow_external_lb_name  = "allow-external-lb"
-  default_priority        = 1000
-  tcp_traffic_port        = 80
-  tcp_protocol            = "tcp"
-  ingress_fr              = "INGRESS"
-  ssh_port                = 22
-  iap_target_tags         = ["iap-ssh-access"]
-  lb_source_ranges = [
-    "35.191.0.0/16",
-    "130.211.0.0/22",
-    "10.128.0.0/23"
-  ]
-  backend_tags             = ["backend-service"]
-  router_name              = "${var.vpc_name}-router"
-  nat_name                 = "${google_compute_router.vpc_router[0].name}-nat"
-  nat_ip_allocation_option = "AUTO_ONLY"
-  nat_source_subnets       = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-  enable_log_config        = true
-  log_filter               = "ERRORS_ONLY"
+variable "lb_fw_rule_priority" {
+  description = "Priority for the load balancer firewall rules"
+  type        = number
+}
+
+variable "backend_target_tags" {
+  description = "Network tags that the LB firewall rules apply to (must match instance template tags)"
+  type        = list(string)
+}
+
+variable "lb_subnets_ranges" {
+  description = "Source IP CIDR ranges for the LB proxy subnet firewall rule (the proxy-only subnet CIDR)"
+  type        = list(string)
 }

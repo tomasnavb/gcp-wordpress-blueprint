@@ -5,7 +5,7 @@ locals {
     cloudsql_editor         = "roles/cloudsql.editor"
     bucket_admin            = "roles/storage.admin"
     secret_manager_accessor = "roles/secretmanager.secretAccessor"
-    fn_invoker              = "roles/cloudfunctions.invoker"
+    fn_invoker              = "roles/run.invoker"
     custom_db_backup_role = {
       id          = "dbBackupRole"
       title       = "Database Backup Role"
@@ -30,22 +30,13 @@ locals {
   }
 
   # Virtual machines
-  vm_prod_startup_script_path = "${path.module}/scripts/startup-prod.sh"
-  vm_prod_tags                = ["backend-service", "iap-ssh-access"]
-  vm_mgmt_startup_script_path = "${path.module}/scripts/startup-mgmt.sh"
-  vm_mgmt_tags                = ["iap-ssh-access"]
+  source_image = "projects/${var.project_id}/global/images/family/wordpress-golden"
+  disk_size_gb = 10
+  disk_type    = "pd-standard"
 
   # Cloud Storage
   db_backup_bucket_name = "${var.db_backup_bucket_base_name}-${var.project_id}"
   scripts_bucket_name   = "${var.scripts_bucket_base_name}-${var.project_id}"
-
-  # Cloud Run Functions
-  function_runtime     = "python311"
-  function_entry_point = "run_backup"
-
-  # CloudSQL
-  enable_instance_external_ip = false
-  prevent_instance_destroy    = true
 
   # Cloud Scheduler
   scheduler_export_name          = "export-db-backup"
@@ -56,5 +47,12 @@ locals {
   scheduler_snapshot_schedule    = "0 */4 * * *" # Every 4 hours
   scheduler_fn_backup_type       = { standard = "export", fast = "snapshot" }
 
+  secrets = {
+    "wordpress-db-name"                = var.db_name
+    "wordpress-db-user"                = var.db_user
+    "wordpress-db-password"            = random_password.db_password.result
+    "wordpress-db-host"                = google_sql_database_instance.main.private_ip_address
+    "wordpress-db-instance-connection" = google_sql_database_instance.main.connection_name
+  }
 
 }

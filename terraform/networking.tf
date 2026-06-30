@@ -1,27 +1,65 @@
-# VPC prod with a subnet for the VM unmanaged instance group
 module "vpc_prod" {
   depends_on = [google_project_service.gcp_services]
   source     = "./modules/networking"
 
-  vpc_name             = var.vpc_prod_name
+  # VPC
+  vpc_name            = var.vpc_prod_name
+  auto_create_subnets = false
+
+  # Subnet
   subnet_name          = var.subnet_prod_name
-  subnet_region        = var.subnet_prod_region
   subnet_ip_cidr_range = var.subnet_prod_ip_cidr_range
-  enable_nat           = true
-  allow_external_lb    = true
+  region               = var.subnet_prod_region
+
+  # Cloud NAT
+  enable_nat                         = true
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+  enable_nat_log_config              = true
+  nat_log_filter                     = "ERRORS_ONLY"
+
+  # IAP SSH
   allow_ssh_from_iap   = true
+  iap_fw_rule_priority = 1000
+  iap_target_tags      = ["iap-ssh-access"]
+
+  # External LB
+  allow_external_lb   = true
+  lb_fw_rule_priority = 1000
+  backend_target_tags = ["backend-service"]
+  lb_subnets_ranges   = [var.lb_dedicated_ip_cidr]
 }
 
 module "vpc_mgmt" {
   depends_on = [google_project_service.gcp_services]
   source     = "./modules/networking"
 
-  vpc_name             = var.vpc_mgmt_name
+  # VPC
+  vpc_name            = var.vpc_mgmt_name
+  auto_create_subnets = false
+
+  # Subnet
   subnet_name          = var.subnet_mgmt_name
-  subnet_region        = var.subnet_mgmt_region
   subnet_ip_cidr_range = var.subnet_mgmt_ip_cidr_range
-  enable_nat           = true
+  region               = var.subnet_mgmt_region
+
+  # Cloud NAT
+  enable_nat                         = true
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+  enable_nat_log_config              = true
+  nat_log_filter                     = "ERRORS_ONLY"
+
+  # IAP SSH
   allow_ssh_from_iap   = true
+  iap_fw_rule_priority = 1000
+  iap_target_tags      = ["iap-ssh-access"]
+
+  # External LB (not applicable to management VPC)
+  allow_external_lb   = false
+  lb_fw_rule_priority = 1000
+  backend_target_tags = []
+  lb_subnets_ranges   = []
 }
 
 resource "google_compute_network_peering" "peering-prod-mgmt" {
@@ -34,9 +72,4 @@ resource "google_compute_network_peering" "peering-mgmt-prod" {
   name         = "peering-mgmt-prod"
   network      = module.vpc_mgmt.vpc_self_link
   peer_network = module.vpc_prod.vpc_self_link
-
 }
-
-
-
-

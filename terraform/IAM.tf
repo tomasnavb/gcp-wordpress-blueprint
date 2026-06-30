@@ -1,94 +1,77 @@
-# IAM bindings for the management VM to have access to IAP Tunnel.
+# IAM binding granting the operator IAP tunnel access for SSH into the management VM.
 resource "google_project_iam_member" "iap_tunnel_access" {
   project = var.project_id
   role    = local.roles.iap_tunnel_accessor
-  member  = "user:tomy.brm@gmail.com"
-
+  member  = "user:${var.iap_user_email}"
 }
 
-/* IAM binding for the management VM's service account to have the Cloud SQL Editor role, allowing it to manage 
-Cloud SQL instances and connect to them securely. This is essential for the management VM to perform administrative 
-tasks on the Cloud SQL database, such as running maintenance scripts or managing database users. */
+# IAM binding for the management VM SA to manage Cloud SQL instances (admin tasks, maintenance scripts).
 resource "google_project_iam_member" "cloudsql_editor" {
   project = var.project_id
   role    = local.roles.cloudsql_editor
   member  = local.service_accounts.mgmt
-
 }
 
-# IAM binding for the Cloud SQL instance's service account to have access to the Cloud Storage bucket for backups. 
+# IAM binding for the Cloud SQL instance SA to write backups to the Cloud Storage bucket.
 resource "google_storage_bucket_iam_member" "bucket_admin" {
   bucket = google_storage_bucket.cloudsql_backups.name
   role   = local.roles.bucket_admin
   member = local.service_accounts.sql_instance
-
 }
 
-/* IAM binding for the Cloud Function that performs database backups to have the custom role with necessary 
-permissions to manage Cloud SQL instances. */
+# IAM binding for the backup Cloud Function SA to use the custom CloudSQL backup role.
 resource "google_project_iam_member" "cloudsql_backup_fn_role_binding" {
   project = var.project_id
   role    = google_project_iam_custom_role.fn_db_backup.id
   member  = local.service_accounts.fn
-
 }
 
-# IAM binding for the production VM's service account to have access to the database password stored in Secret Manager. 
-resource "google_secret_manager_secret_iam_member" "prod_vm_role_binding" {
+# IAM bindings granting the production VM SA access to all WordPress secrets in Secret Manager.
+resource "google_secret_manager_secret_iam_member" "prod_vm_secret_access" {
+  for_each  = google_secret_manager_secret.wordpress_secrets
   project   = var.project_id
   role      = local.roles.secret_manager_accessor
-  secret_id = google_secret_manager_secret.db_password.id
+  secret_id = each.value.id
   member    = local.service_accounts.prod
-
 }
 
-/* IAM binding for the Cloud Scheduler's service account to have the Cloud Functions Invoker role, allowing it to trigger 
-the backup function according to the defined schedule. */
+# IAM binding for the Cloud Scheduler SA to invoke the backup Cloud Function.
 resource "google_cloudfunctions2_function_iam_member" "fn_invoker_binding" {
   project        = var.project_id
   location       = google_cloudfunctions2_function.db_backup_fn.location
-  cloud_function = google_cloudfunctions2_function.db_backup_fn.self_link
+  cloud_function = google_cloudfunctions2_function.db_backup_fn.name
   role           = local.roles.fn_invoker
   member         = local.service_accounts.scheduler
-
 }
 
-# Management VM's service account.
+# Management VM service account.
 resource "google_service_account" "mgmt_vm" {
   account_id   = "mgmt-vm-sa"
-  display_name = "Service Account for the database connection of the mgmt VM"
-
+  display_name = "Service Account for the management VM (Cloud SQL admin access)"
 }
 
-# Production VM's service account.
+# Production VM service account.
 resource "google_service_account" "prod_vm" {
   account_id   = "prod-vm-sa"
-  display_name = "Service Account for the database connection of the mgmt VM"
-
+  display_name = "Service Account for production WordPress VM instances"
 }
 
-# Cloud Scheduler service account to invoke the backup function.
+# Cloud Scheduler service account to invoke the backup Cloud Function.
 resource "google_service_account" "scheduler_fn_invoker" {
   account_id   = "scheduler-fn-invoker-sa"
-  display_name = "Service Account for Cloud Scheduler to invoke Cloud Function for CloudSQL backup"
-
+  display_name = "Service Account for Cloud Scheduler to invoke the CloudSQL backup function"
 }
 
 # Cloud Function service account to manage Cloud SQL backups.
 resource "google_service_account" "cloudsql_backup_fn" {
   account_id   = "cloudsql-backup-fn-sa"
-  display_name = "Service Account for Cloud Function to backup CloudSQL database to Cloud Storage"
-
+  display_name = "Service Account for the CloudSQL backup Cloud Function"
 }
 
-/* IAM Custom Role for Cloud Function for Cloud SQL backup, granting necessary permissions to manage 
-Cloud SQL instances and backups. */
+# Custom IAM role for the backup Cloud Function with least-privilege CloudSQL backup permissions.
 resource "google_project_iam_custom_role" "fn_db_backup" {
   role_id     = local.roles.custom_db_backup_role.id
   title       = local.roles.custom_db_backup_role.title
   description = local.roles.custom_db_backup_role.description
   permissions = local.roles.custom_db_backup_role.permissions
 }
-
-
-

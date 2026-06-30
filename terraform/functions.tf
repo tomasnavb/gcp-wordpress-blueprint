@@ -6,8 +6,8 @@ resource "google_cloudfunctions2_function" "db_backup_fn" {
   description = var.function_description
 
   build_config {
-    runtime     = local.function_runtime
-    entry_point = local.function_entry_point
+    runtime     = "python311"
+    entry_point = "run_backup"
     source {
       storage_source {
         bucket = google_storage_bucket.scripts.name
@@ -43,6 +43,14 @@ module "export_db_scheduler" {
   backup_fn_uri                 = google_cloudfunctions2_function.db_backup_fn.https_trigger_url
   fn_backup_type                = local.scheduler_fn_backup_type.standard # Standard for export backup for 90 days retention
   invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
+  http_method                   = var.http_method
+  min_backoff_duration          = var.min_backoff_duration
+  time_zone                     = var.time_zone
+  max_doublings                 = var.max_doublings
+  retry_count                   = var.retry_count
+  max_backoff_duration          = var.max_backoff_duration
+  attempt_deadline              = var.attempt_deadline
+  max_retry_duration            = var.max_retry_duration
 }
 
 module "snapshot_db_scheduler" {
@@ -55,5 +63,13 @@ module "snapshot_db_scheduler" {
   backup_fn_uri                 = google_cloudfunctions2_function.db_backup_fn.https_trigger_url
   fn_backup_type                = local.scheduler_fn_backup_type.fast # Fast for snapshot backup for 7 days retention
   invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
+  http_method                   = var.http_method
+  min_backoff_duration          = var.min_backoff_duration
+  time_zone                     = var.time_zone
+  max_doublings                 = var.max_doublings
+  retry_count                   = var.retry_count
+  max_backoff_duration          = var.max_backoff_duration
+  attempt_deadline              = var.attempt_deadline
+  max_retry_duration            = var.max_retry_duration
 
 }

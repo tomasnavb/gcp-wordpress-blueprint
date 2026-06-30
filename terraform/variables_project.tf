@@ -4,13 +4,16 @@ variable "project_id" {
 }
 
 variable "project_region" {
-  description = "Google Cloud project region"
+  description = "Default GCP region for the project"
   type        = string
-  default     = "europe-west9"
 }
 
 variable "project_zone" {
-  description = "Google Cloud project zone"
+  description = "Default GCP zone for the project"
   type        = string
-  default     = "europe-west9-a"
+}
+
+variable "iap_user_email" {
+  description = "Google account email granted IAP tunnel access for SSH into the management VM"
+  type        = string
 }

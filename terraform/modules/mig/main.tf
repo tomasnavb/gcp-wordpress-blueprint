@@ -1,19 +1,19 @@
 # Instance template
 resource "google_compute_instance_template" "this" {
-  name_prefix  = var.name_prefix
+  name_prefix  = var.template_name_prefix
   machine_type = var.machine_type
   region       = var.region
 
   lifecycle {
-    create_before_destroy = local.create_before_destroy
+    create_before_destroy = true
   }
 
   disk {
-    source_image = local.image_family_path
-    auto_delete  = local.auto_delete
-    boot         = local.boot
+    source_image = var.source_image
+    auto_delete  = true
+    boot         = true
     disk_size_gb = var.disk_size_gb
-    disk_type    = local.disk_type
+    disk_type    = var.disk_type
   }
 
   network_interface {
@@ -21,8 +21,13 @@ resource "google_compute_instance_template" "this" {
     subnetwork = var.subnetwork
   }
 
+  metadata = {
+    "startup-script" = var.startup_script
+  }
+
   service_account {
-    scopes = local.scopes
+    email  = var.service_account_email
+    scopes = ["cloud-platform"]
   }
 
   tags = var.tags
@@ -39,28 +44,28 @@ resource "google_compute_region_instance_group_manager" "this" {
   distribution_policy_zones = var.distribution_policy_zones
 
   # Even distribution across zones
-  distribution_policy_target_shape = local.distribution_policy
+  distribution_policy_target_shape = var.distribution_policy_target_shape
 
   version {
     instance_template = google_compute_instance_template.this.self_link
   }
 
   named_port {
-    name = local.named_port
-    port = local.port
+    name = var.port_name
+    port = var.port
   }
 
   auto_healing_policies {
     health_check      = google_compute_health_check.http.self_link
-    initial_delay_sec = local.initial_delay_sec
+    initial_delay_sec = var.initial_delay_sec
   }
 
   update_policy {
-    type                           = local.update_policy_type
-    minimal_action                 = local.update_policy_minimal_action
-    most_disruptive_allowed_action = local.most_disruptive_allowed_action
-    max_surge_fixed                = local.max_surge_fixed
-    max_unavailable_fixed          = local.max_unavailable_fixed
+    type                           = var.update_policy_type
+    minimal_action                 = var.update_policy_minimal_action
+    most_disruptive_allowed_action = var.most_disruptive_allowed_action
+    max_surge_fixed                = var.max_surge_fixed
+    max_unavailable_fixed          = var.max_unavailable_fixed
   }
 }
 
@@ -81,7 +86,7 @@ resource "google_compute_health_check" "http" {
 # Autoscaler for the regional MIG
 resource "google_compute_region_autoscaler" "this" {
   name   = var.autoscaler_name
-  region = var.autoscaler_region
+  region = var.region
   target = google_compute_region_instance_group_manager.this.id
 
   autoscaling_policy {

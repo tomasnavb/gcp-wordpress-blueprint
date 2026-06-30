@@ -1,53 +1,50 @@
 # Terraform configuration for Google Cloud SQL resources
 
-/* Database instance configuration for CloudSQL, including settings for machine type, 
-disk size, backup configuration, and deletion protection. The lifecycle block is used 
-to ignore changes to disk size after the initial creation of the instance, 
-allowing for manual resizing without triggering a Terraform update. */
+/* CloudSQL database instance for MySQL. Regional configuration for high availability,  
+disk autoresize preventing disk space exhaustion, and private networking for secure communication. */
 resource "google_sql_database_instance" "main" {
   depends_on          = [google_project_service.gcp_services, google_service_networking_connection.private_connection]
   name                = var.instance_name
   region              = var.instance_region
-  database_version    = var.instance_version
-  deletion_protection = var.enable_instance_deletion_protection
+  database_version    = "MYSQL_8_4"
+  deletion_protection = false # Set to true in production environments to prevent accidental deletion of the database instance.
 
   settings {
     tier              = var.instance_tier
     edition           = var.instance_edition
     availability_type = var.instance_availability_type
-    disk_autoresize   = var.enable_instance_disk_autoresize
+    disk_autoresize   = true
     disk_type         = var.instance_disk_type
     disk_size         = var.instance_disk_size_gb
 
     ip_configuration {
-      ipv4_enabled    = local.enable_instance_external_ip
+      ipv4_enabled    = false
       private_network = module.vpc_prod.vpc_id
     }
   }
 
   lifecycle {
-    prevent_destroy = local.prevent_instance_destroy
+    prevent_destroy = false # Set to true in production environments to prevent accidental deletion of the database instance.
     ignore_changes  = [disk_size]
   }
 
 }
 
-# MySQL database for Wordpress site  
+# MySQL database required for Wordpress
 resource "google_sql_database" "wordpress_db" {
   name      = var.db_name
-  instance  = google_sql_database_instance.main.self_link
+  instance  = google_sql_database_instance.main.name
   charset   = var.db_charset
   collation = var.db_collation
 }
 
-# Wordpress database user with random password
+# Main database user for Wordpress application with a randomly generated password stored in Secret Manager
 resource "google_sql_user" "wordpress_app_user" {
   name     = var.db_user
-  instance = google_sql_database_instance.main.self_link
+  instance = google_sql_database_instance.main.name
   password = random_password.db_password.result
 }
 
-# Generate a 32 lenght random password with special characters for the database user
 resource "random_password" "db_password" {
   length           = 32
   special          = true

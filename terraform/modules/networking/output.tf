@@ -1,11 +1,11 @@
 # VPC network outputs
-output "id" {
-  value       = google_compute_network.vpc.id
+output "vpc_id" {
+  value       = google_compute_network.this.id
   description = "ID of the VPC network"
 }
 
 output "vpc_self_link" {
-  value       = google_compute_network.vpc.self_link
+  value       = google_compute_network.this.self_link
   description = "Self-link of the VPC network"
 }
 
