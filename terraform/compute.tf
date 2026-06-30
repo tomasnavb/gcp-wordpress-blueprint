@@ -78,10 +78,28 @@ module "wordpress_regional_mig" {
 }
 
 module "external_lb" {
-  source                = "./modules/external_lb"
+  source = "./modules/external_lb"
+
+  # Required network references
   region                = var.subnet_prod_region
-  dedicated_subnet_cidr = var.lb_dedicated_ip_cidr
-  balancing_mode        = "RATE"
-  mig_instance_group    = module.wordpress_regional_mig.self_link
   vpc_id                = module.vpc_prod.vpc_id
+  dedicated_subnet_cidr = var.lb_dedicated_ip_cidr
+  mig_instance_group    = module.wordpress_regional_mig.self_link
+
+  # Resource names (module appends "-external-lb" suffix to subnet, IP, url_map, health_check)
+  subnet_name          = "wordpress-prod-lb-proxy"
+  ip_address_name      = "wordpress-prod-lb-ip"
+  lb_name              = "wordpress-prod-lb"
+  url_map_name         = "wordpress-prod-lb-url-map"
+  health_check_name    = "wordpress-prod-lb-hc"
+  backend_service_name = "wordpress-prod-lb-backend-service"
+
+  # LB configuration
+  subnet_role              = "ACTIVE"
+  listener_port            = 80
+  http_health_check_port   = 80
+  backend_service_protocol = "HTTP"
+  load_balancing_scheme    = "EXTERNAL_MANAGED"
+  balancing_mode           = "RATE"
+  capacity_scaler          = 1.0
 }
