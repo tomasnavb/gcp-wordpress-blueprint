@@ -1,13 +1,27 @@
-terraform.tfvars
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
 *.tfvars
-tmp
-tmp/*
-venv
-venv/*
-__pycache__
-__pycache__/*
-.pytest_cache
-.pytest_cache/*
-*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+
+# Packer
+packer_cache/
+
+# Python
+**/__pycache__/
+**/.pytest_cache/
+**/venv/
+*.pyc
+
+# Build artifacts
+**/tmp/
 *.zip
+*.log
+
+# Editor
 .vscode/

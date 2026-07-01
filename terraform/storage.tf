@@ -46,8 +46,8 @@ resource "google_storage_bucket" "scripts" {
 # Archive the Cloud Function source code
 data "archive_file" "function_zip" {
   type        = "zip"
-  source_dir  = "./functions/db-backup"
-  output_path = "./tmp/db-backup.zip"
+  source_dir  = "${path.module}/functions/db-backup"
+  output_path = "${path.module}/tmp/db_backup.zip"
 
 }
 

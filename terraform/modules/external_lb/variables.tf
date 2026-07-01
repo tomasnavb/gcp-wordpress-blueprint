@@ -78,6 +78,11 @@ variable "balancing_mode" {
   type        = string
 }
 
+variable "max_rate_per_instance" {
+  description = "Maximum requests per second per backend instance (only applicable if balancing_mode is RATE)"
+  type        = number
+}
+
 variable "capacity_scaler" {
   description = "Multiplier applied to the backend's capacity (1.0 = 100%)"
   type        = number

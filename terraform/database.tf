@@ -17,6 +17,11 @@ resource "google_sql_database_instance" "main" {
     disk_type         = var.instance_disk_type
     disk_size         = var.instance_disk_size_gb
 
+    backup_configuration {
+      enabled            = true
+      binary_log_enabled = true
+    }
+
     ip_configuration {
       ipv4_enabled    = false
       private_network = module.vpc_prod.vpc_id
@@ -24,8 +29,8 @@ resource "google_sql_database_instance" "main" {
   }
 
   lifecycle {
-    prevent_destroy = false # Set to true in production environments to prevent accidental deletion of the database instance.
-    ignore_changes  = [disk_size]
+    prevent_destroy = false                   # Set to true in production environments to prevent accidental deletion of the database instance.
+    ignore_changes  = [settings[0].disk_size] # Ignore changes to disk size to prevent unnecessary recreation of the instance when disk size is modified.
   }
 
 }

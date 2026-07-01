@@ -40,7 +40,7 @@ module "export_db_scheduler" {
   name                          = local.scheduler_export_name
   description                   = local.scheduler_export_description
   schedule                      = local.scheduler_export_schedule # Daily at midnight
-  backup_fn_uri                 = google_cloudfunctions2_function.db_backup_fn.https_trigger_url
+  backup_fn_uri                 = google_cloudfunctions2_function.db_backup_fn.url
   fn_backup_type                = local.scheduler_fn_backup_type.standard # Standard for export backup for 90 days retention
   invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
   http_method                   = var.http_method
@@ -60,7 +60,7 @@ module "snapshot_db_scheduler" {
   name                          = local.scheduler_snapshot_name
   description                   = local.scheduler_snapshot_description
   schedule                      = local.scheduler_snapshot_schedule # Every 4 hours
-  backup_fn_uri                 = google_cloudfunctions2_function.db_backup_fn.https_trigger_url
+  backup_fn_uri                 = google_cloudfunctions2_function.db_backup_fn.url
   fn_backup_type                = local.scheduler_fn_backup_type.fast # Fast for snapshot backup for 7 days retention
   invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
   http_method                   = var.http_method

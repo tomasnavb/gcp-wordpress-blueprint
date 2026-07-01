@@ -21,6 +21,7 @@ curl -O https://wordpress.org/latest.tar.gz
 tar -xzf latest.tar.gz
 cp -rf wordpress/* .
 rm -rf wordpress latest.tar.gz
+rm -f index.html
 
 # Leave wp-config-sample intact — credentials
 # will be injected at runtime via startup script
@@ -32,4 +33,4 @@ chown -R www-data:www-data /var/www/html
 echo ">>> Enabling services on boot..."
 systemctl enable apache2
 
-echo ">>> Build complete"s
+echo ">>> Build complete"

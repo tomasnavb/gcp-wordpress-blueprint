@@ -35,6 +35,20 @@ resource "google_secret_manager_secret_iam_member" "prod_vm_secret_access" {
   member    = local.service_accounts.prod
 }
 
+# IAM binding allowing the management VM SA to SSH into production instances (impersonate prod-vm-sa).
+resource "google_service_account_iam_member" "mgmt_ssh_to_prod" {
+  service_account_id = google_service_account.prod_vm.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = local.service_accounts.mgmt
+}
+
+# IAM binding allowing the management VM SA to open IAP tunnels to production instances.
+resource "google_project_iam_member" "mgmt_iap_tunnel_access" {
+  project = var.project_id
+  role    = local.roles.iap_tunnel_accessor
+  member  = local.service_accounts.mgmt
+}
+
 # IAM binding for the Cloud Scheduler SA to invoke the backup Cloud Function.
 resource "google_cloudfunctions2_function_iam_member" "fn_invoker_binding" {
   project        = var.project_id

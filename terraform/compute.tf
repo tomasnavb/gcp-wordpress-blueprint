@@ -39,7 +39,7 @@ module "wordpress_regional_mig" {
   disk_size_gb          = local.disk_size_gb
   disk_type             = local.disk_type
   network               = module.vpc_prod.vpc_self_link
-  subnetwork            = var.subnet_prod_name
+  subnetwork            = module.vpc_prod.subnet_id
   startup_script        = file("${path.root}/scripts/startup-prod.sh")
   service_account_email = google_service_account.prod_vm.email
   tags                  = var.instance_template_tags
@@ -84,7 +84,7 @@ module "external_lb" {
   region                = var.subnet_prod_region
   vpc_id                = module.vpc_prod.vpc_id
   dedicated_subnet_cidr = var.lb_dedicated_ip_cidr
-  mig_instance_group    = module.wordpress_regional_mig.self_link
+  mig_instance_group    = module.wordpress_regional_mig.instance_group
 
   # Resource names (module appends "-external-lb" suffix to subnet, IP, url_map, health_check)
   subnet_name          = "wordpress-prod-lb-proxy"
@@ -101,5 +101,6 @@ module "external_lb" {
   backend_service_protocol = "HTTP"
   load_balancing_scheme    = "EXTERNAL_MANAGED"
   balancing_mode           = "RATE"
+  max_rate_per_instance    = 100
   capacity_scaler          = 1.0
 }

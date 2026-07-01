@@ -1,8 +1,8 @@
 locals {
-  lb_suffix        = "-external-lb"
-  subnet_purpose   = "REGIONAL_MANAGED_PROXY"
-  ip_protocol      = "TCP"
-  fr_full_name     = "${var.lb_name}-forwarding-rule"
+  lb_suffix      = "-external-lb"
+  subnet_purpose = "REGIONAL_MANAGED_PROXY"
+  ip_protocol    = "TCP"
+  fr_full_name   = "${var.lb_name}-forwarding-rule"
 }
 
 # Proxy-only subnet required for regional external Application Load Balancer
@@ -73,8 +73,9 @@ resource "google_compute_region_backend_service" "mig" {
   health_checks = [google_compute_region_health_check.backend_health_check.self_link]
 
   backend {
-    group           = var.mig_instance_group
-    balancing_mode  = var.balancing_mode
-    capacity_scaler = var.capacity_scaler
+    group                 = var.mig_instance_group
+    balancing_mode        = var.balancing_mode
+    max_rate_per_instance = var.max_rate_per_instance
+    capacity_scaler       = var.capacity_scaler
   }
 }

@@ -13,12 +13,12 @@ source "googlecompute" "wordpress" {
   zone       = var.zone
 
   # Base image
-  source_image_family  = "debian-12"
-  source_image_project = "debian-cloud"
+  source_image_family      = "debian-12"
+  source_image_project_id  = ["debian-cloud"]
 
   # Temporary VM specs
   machine_type = "e2-medium"
-  disk_size    = 20
+  disk_size    = 10
 
   # Result image name — {{timestamp}} guarantees uniqueness on every build
   image_name        = "wordpress-golden-{{timestamp}}"
@@ -53,7 +53,7 @@ build {
   # Step 3: verify everything was installed correctly
   provisioner "shell" {
     inline = [
-      "apache2 -v",
+      "/usr/sbin/apache2 -v",
       "php --version",
       "systemctl is-enabled apache2"
     ]

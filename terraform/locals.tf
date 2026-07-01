@@ -5,7 +5,7 @@ locals {
     cloudsql_editor         = "roles/cloudsql.editor"
     bucket_admin            = "roles/storage.admin"
     secret_manager_accessor = "roles/secretmanager.secretAccessor"
-    fn_invoker              = "roles/run.invoker"
+    fn_invoker              = "roles/cloudfunctions.invoker"
     custom_db_backup_role = {
       id          = "dbBackupRole"
       title       = "Database Backup Role"
