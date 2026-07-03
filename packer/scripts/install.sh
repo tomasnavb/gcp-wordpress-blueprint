@@ -27,6 +27,9 @@ rm -f index.html
 # will be injected at runtime via startup script
 cp wp-config-sample.php wp-config.php
 
+echo ">>> Creating health check endpoint..."
+echo '<?php http_response_code(200); echo "ok"; ?>' > /var/www/html/health.php
+
 echo ">>> Setting permissions..."
 chown -R www-data:www-data /var/www/html
 
