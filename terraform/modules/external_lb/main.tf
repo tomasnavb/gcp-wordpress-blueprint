@@ -59,7 +59,8 @@ resource "google_compute_region_health_check" "backend_health_check" {
   region = var.region
 
   http_health_check {
-    port = var.http_health_check_port
+    port         = var.http_health_check_port
+    request_path = "/health.php"
   }
 }
 

@@ -1,36 +1,33 @@
 #!/bin/bash
-# startup-script.sh
 # Executed on every VM boot via instance metadata
-# Injects WordPress DB credentials from Secret Manager
+# Fetches WordPress DB credentials from Secret Manager and injects them into wp-config.php
 
 set -e
 
-echo ">>> Fetching credentials from Secret Manager..."
-
 PROJECT_ID=$(curl -s "http://metadata.google.internal/computeMetadata/v1/project/project-id" -H "Metadata-Flavor: Google")
 
-DB_NAME=$(gcloud secrets versions access latest \
-  --secret="wordpress-db-name" \
-  --project="$PROJECT_ID")
+echo ">>> Fetching credentials from Secret Manager..."
 
-DB_USER=$(gcloud secrets versions access latest \
-  --secret="wordpress-db-user" \
-  --project="$PROJECT_ID")
-
-DB_PASSWORD=$(gcloud secrets versions access latest \
-  --secret="wordpress-db-password" \
-  --project="$PROJECT_ID")
-
-DB_HOST=$(gcloud secrets versions access latest \
-  --secret="wordpress-db-host" \
-  --project="$PROJECT_ID")
+DB_NAME=$(gcloud secrets versions access latest --secret="wordpress-db-name" --project="$PROJECT_ID" 2>/dev/null)
+DB_USER=$(gcloud secrets versions access latest --secret="wordpress-db-user" --project="$PROJECT_ID" 2>/dev/null)
+DB_PASSWORD=$(gcloud secrets versions access latest --secret="wordpress-db-password" --project="$PROJECT_ID" 2>/dev/null)
+DB_HOST=$(gcloud secrets versions access latest --secret="wordpress-db-host" --project="$PROJECT_ID" 2>/dev/null)
 
 echo ">>> Injecting credentials into wp-config.php..."
 
-sed -i "s/database_name_here/$DB_NAME/" /var/www/html/wp-config.php
-sed -i "s/username_here/$DB_USER/" /var/www/html/wp-config.php
-sed -i "s/password_here/$DB_PASSWORD/" /var/www/html/wp-config.php
-sed -i "s/localhost/$DB_HOST/" /var/www/html/wp-config.php
+# Python handles special characters in passwords safely (sed breaks with / \ & etc.)
+python3 <<PYEOF
+with open('/var/www/html/wp-config.php', 'r') as f:
+    content = f.read()
+
+content = content.replace('database_name_here', '${DB_NAME}')
+content = content.replace('username_here',      '${DB_USER}')
+content = content.replace('password_here',      '${DB_PASSWORD}')
+content = content.replace('localhost',          '${DB_HOST}')
+
+with open('/var/www/html/wp-config.php', 'w') as f:
+    f.write(content)
+PYEOF
 
 echo ">>> Restarting Apache..."
 systemctl restart apache2

@@ -35,6 +35,20 @@ resource "google_secret_manager_secret_iam_member" "prod_vm_secret_access" {
   member    = local.service_accounts.prod
 }
 
+# IAM binding allowing production VM instances to write logs to Cloud Logging.
+resource "google_project_iam_member" "prod_vm_log_writer" {
+  project = var.project_id
+  role    = local.roles.log_writer
+  member  = local.service_accounts.prod
+}
+
+# IAM binding allowing the management VM SA to describe and list Compute instances (required by gcloud compute ssh).
+resource "google_project_iam_member" "mgmt_compute_viewer" {
+  project = var.project_id
+  role    = local.roles.compute_viewer
+  member  = local.service_accounts.mgmt
+}
+
 # IAM binding allowing the management VM SA to SSH into production instances (impersonate prod-vm-sa).
 resource "google_service_account_iam_member" "mgmt_ssh_to_prod" {
   service_account_id = google_service_account.prod_vm.name
