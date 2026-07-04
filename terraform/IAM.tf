@@ -49,6 +49,13 @@ resource "google_project_iam_member" "mgmt_compute_viewer" {
   member  = local.service_accounts.mgmt
 }
 
+# IAM binding allowing the management VM SA to use OS Login with sudo privilege for SSH access to production instances.
+resource "google_project_iam_member" "mgmt_os_admin_login" {
+  project = var.project_id
+  role    = local.roles.os_admin_login
+  member  = local.service_accounts.mgmt
+}
+
 # IAM binding allowing the management VM SA to SSH into production instances (impersonate prod-vm-sa).
 resource "google_service_account_iam_member" "mgmt_ssh_to_prod" {
   service_account_id = google_service_account.prod_vm.name

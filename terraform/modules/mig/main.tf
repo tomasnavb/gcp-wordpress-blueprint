@@ -23,6 +23,7 @@ resource "google_compute_instance_template" "this" {
 
   metadata = {
     "startup-script" = var.startup_script
+    "enable-oslogin" = "true"
   }
 
   service_account {

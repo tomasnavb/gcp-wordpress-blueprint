@@ -8,6 +8,7 @@ locals {
     fn_invoker              = "roles/cloudfunctions.invoker"
     compute_viewer          = "roles/compute.viewer"
     log_writer              = "roles/logging.logWriter"
+    os_admin_login          = "roles/compute.osAdminLogin"
     custom_db_backup_role = {
       id          = "dbBackupRole"
       title       = "Database Backup Role"
