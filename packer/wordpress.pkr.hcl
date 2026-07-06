@@ -25,6 +25,10 @@ source "googlecompute" "wordpress" {
   image_family      = "wordpress-golden"
   image_description = "Golden image with WordPress + Apache + PHP pre-installed"
 
+  # Network for the temporary build VM
+  network    = var.network
+  subnetwork = var.subnetwork
+
   # SSH communication with the VM during build
   communicator            = "ssh"
   ssh_username            = "packer"

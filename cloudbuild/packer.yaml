@@ -1,0 +1,50 @@
+steps:
+  # Initialize Packer plugins (downloads the googlecompute plugin)
+  - id: 'packer-init'
+    name: 'hashicorp/packer:latest'
+    args: ['init', 'packer/']
+
+  # Validate Packer configuration before building
+  - id: 'packer-validate'
+    name: 'hashicorp/packer:latest'
+    args:
+      - 'validate'
+      - '-var'
+      - 'project_id=$_PROJECT_ID'
+      - '-var'
+      - 'zone=$_ZONE'
+      - '-var'
+      - 'network=$_NETWORK'
+      - '-var'
+      - 'subnetwork=$_SUBNETWORK'
+      - 'packer/'
+
+  # Build the golden image — creates a temporary VM, runs install.sh, snapshots the disk
+  # PACKER_LOG=1 streams provisioner output to Cloud Build logs
+  - id: 'packer-build'
+    name: 'hashicorp/packer:latest'
+    args:
+      - 'build'
+      - '-var'
+      - 'project_id=$_PROJECT_ID'
+      - '-var'
+      - 'zone=$_ZONE'
+      - '-var'
+      - 'network=$_NETWORK'
+      - '-var'
+      - 'subnetwork=$_SUBNETWORK'
+      - 'packer/'
+    env:
+      - 'PACKER_LOG=1'
+
+substitutions:
+  _PROJECT_ID: 'your-gcp-project-id'
+  _ZONE: 'europe-west1-b'
+  _NETWORK: 'wordpress-mgmt-vpc'
+  _SUBNETWORK: 'wordpress-mgmt-subnet'
+
+# Packer builds can take 10-15 minutes depending on apt-get and WordPress download speed
+timeout: '3600s'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

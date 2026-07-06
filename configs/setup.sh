@@ -137,6 +137,20 @@ fi
 export REPO_NAME="your-repo-name"
 export REPO_OWNER="your-github-username-or-org"
 
+# Packer trigger — fires on push to main only when packer/ files change.
+# Builds a new golden image and registers it under the wordpress-golden image family.
+# NOT triggered on PRs — Packer creates real GCP resources and takes 10-15 minutes.
+gcloud builds triggers create github \
+  --project=${PROJECT_ID} \
+  --name="packer-build" \
+  --repo-name="${REPO_NAME}" \
+  --repo-owner="${REPO_OWNER}" \
+  --branch-pattern="^main$" \
+  --included-files="packer/**" \
+  --build-config="cloudbuild/packer.yaml" \
+  --substitutions="_PROJECT_ID=${PROJECT_ID},_ZONE=europe-west1-b,_NETWORK=wordpress-mgmt-vpc,_SUBNETWORK=wordpress-mgmt-subnet" \
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/${CB_SA}"
+
 # Plan trigger — fires automatically on every PR targeting main.
 # Runs terraform-plan.yaml: init, fmt, validate, plan, destructive change check, artifact upload.
 gcloud builds triggers create github \
