@@ -105,6 +105,11 @@ gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${CB_SA}" \
   --role="roles/servicenetworking.networksAdmin"
 
+# Cloud Logging — required to write build logs when using CLOUD_LOGGING_ONLY
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/logging.logWriter"
+
 # IAM — Terraform creates service accounts and assigns roles to resources
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${CB_SA}" \
