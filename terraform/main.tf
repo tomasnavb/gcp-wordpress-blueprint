@@ -17,7 +17,6 @@ terraform {
     }
   }
   backend "gcs" {
-    bucket = "wordpress-terraform-state-prod"
     prefix = "environments/prod/networking"
   }
 }

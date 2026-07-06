@@ -5,9 +5,15 @@ set -e
 # Variables — update before running
 # ==============================================================
 export PROJECT_ID="your-gcp-project-id"
-export STATE_BUCKET="wordpress-terraform-state-prod"   # must match main.tf backend "gcs" { bucket = ... }
+export STATE_BUCKET="${PROJECT_ID}-wordpress-terraform-state"   # passed to terraform init via -backend-config in Cloud Build
 export REGION="europe-west1"
 export CB_SA="terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# ==============================================================
+# Enable APIs required before Terraform runs
+# The rest are enabled by Terraform via terraform/APIs.tf
+# ==============================================================
+gcloud services enable compute.googleapis.com --project=${PROJECT_ID}
 
 # ==============================================================
 # Terraform state bucket

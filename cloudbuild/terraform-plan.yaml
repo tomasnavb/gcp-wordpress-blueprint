@@ -12,6 +12,7 @@ steps:
       - "init"
       - "-input=false"
       - "-no-color"
+      - "-backend-config=bucket=$_PROJECT_ID-wordpress-terraform-state"
 
   # Check Terraform formatting
   - id: "terraform-fmt-check"
