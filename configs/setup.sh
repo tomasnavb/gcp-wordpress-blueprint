@@ -57,6 +57,9 @@ gcloud iam service-accounts create terraform-cloud-build \
   --display-name="Terraform Cloud Build SA" \
   --description="Service account for the Terraform CI/CD pipeline via Cloud Build"
 
+echo "Waiting for service account to propagate..."
+sleep 15
+
 # ==============================================================
 # Project-level IAM bindings
 # Adjust this list if your project manages additional resource types
