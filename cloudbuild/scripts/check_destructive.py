@@ -2,7 +2,7 @@ import json
 import os
 import sys
 
-with open('/workspace/plan.json') as f:
+with open('/workspace/terraform/plan.json') as f:
     plan = json.load(f)
 
 destructive_changes = []

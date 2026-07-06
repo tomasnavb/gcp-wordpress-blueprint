@@ -1,87 +1,87 @@
 steps:
-
   # Verify Terraform version
-  - id: 'verify-terraform-version'
-    name: 'hashicorp/terraform:1.15.7'
-    args: ['version']
+  - id: "verify-terraform-version"
+    name: "hashicorp/terraform:1.15.7"
+    args: ["version"]
 
   # Initialize Terraform
-  - id: 'terraform-init'
-    name: 'hashicorp/terraform:1.15.7'
-    dir: 'terraform'
+  - id: "terraform-init"
+    name: "hashicorp/terraform:1.15.7"
+    dir: "terraform"
     args:
-      - 'init'
-      - '-input=false'
-      - '-no-color'
+      - "init"
+      - "-input=false"
+      - "-no-color"
 
   # Check Terraform formatting
-  - id: 'terraform-fmt-check'
-    name: 'hashicorp/terraform:1.15.7'
-    dir: 'terraform'
+  - id: "terraform-fmt-check"
+    name: "hashicorp/terraform:1.15.7"
+    dir: "terraform"
     args:
-      - 'fmt'
-      - '-check'
-      - '-recursive'
-      - '-no-color'
+      - "fmt"
+      - "-check"
+      - "-recursive"
+      - "-no-color"
 
   # Validate Terraform configuration
-  - id: 'terraform-validate'
-    name: 'hashicorp/terraform:1.15.7'
-    dir: 'terraform'
+  - id: "terraform-validate"
+    name: "hashicorp/terraform:1.15.7"
+    dir: "terraform"
     args:
-      - 'validate'
-      - '-no-color'
+      - "validate"
+      - "-no-color"
 
   # Generate Terraform plan
-  - id: 'terraform-plan'
-    name: 'hashicorp/terraform:1.15.7'
-    dir: 'terraform'
+  - id: "terraform-plan"
+    name: "hashicorp/terraform:1.15.7"
+    dir: "terraform"
     args:
-      - 'plan'
-      - '-out=tfplan'
-      - '-input=false'
-      - '-no-color'
+      - "plan"
+      - "-out=tfplan"
+      - "-input=false"
+      - "-no-color"
     env:
-      - 'TF_VAR_project_id=$_PROJECT_ID'
+      - "TF_VAR_project_id=$_PROJECT_ID"
 
   # Convert Terraform plan to text and JSON format for easier analysis and artifact storage
-  - id: 'plan-to-text'
-    name: 'hashicorp/terraform:1.15.7'
-    dir: 'terraform'
-    entrypoint: 'sh'
+  - id: "plan-to-text"
+    name: "hashicorp/terraform:1.15.7"
+    dir: "terraform"
+    entrypoint: "sh"
     args:
-      - '-c'
+      - "-c"
       - |
-        terraform show -no-color tfplan > /workspace/plan.txt
-        terraform show -json tfplan > /workspace/plan.json
-        echo 'Plan saved to /workspace/plan.txt and /workspace/plan.json'
+        terraform show -no-color tfplan > plan.txt
+        terraform show -json tfplan > plan.json
+        echo 'Plan saved to terraform/plan.txt and terraform/plan.json'
 
   # Check for destructive changes in the Terraform plan with a custom Python script. See scripts/check_destructive.py for details.
-  - id: 'check-destructive-changes'
-    name: 'python:3.12-alpine'
-    entrypoint: 'python'
+  - id: "check-destructive-changes"
+    name: "python:3.12-alpine"
+    entrypoint: "python"
     args:
-      - '/workspace/cloudbuild/scripts/check_destructive.py'
+      - "/workspace/cloudbuild/scripts/check_destructive.py"
     env:
-      - 'ALLOW_DESTRUCTIVE_CHANGES=$_ALLOW_DESTRUCTIVE_CHANGES'
+      - "ALLOW_DESTRUCTIVE_CHANGES=$_ALLOW_DESTRUCTIVE_CHANGES"
 
   # Upload the Terraform plan artifacts to a Google Cloud Storage bucket for future reference or auditing.
-  - id: 'upload-plan-artifacts'
-    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
-    entrypoint: 'sh'
+  - id: "upload-plan-artifacts"
+    name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    dir: "terraform"
+    entrypoint: "sh"
     args:
-      - '-c'
+      - "-c"
       - |
-        gcloud storage cp /workspace/plan.txt gs://$_STATE_BUCKET/plans/${BUILD_ID}/plan.txt
-        gcloud storage cp /workspace/plan.json gs://$_STATE_BUCKET/plans/${BUILD_ID}/plan.json
+        gcloud storage cp plan.txt gs://$_STATE_BUCKET/plans/${BUILD_ID}/plan.txt
+        gcloud storage cp tfplan gs://$_STATE_BUCKET/plans/${BUILD_ID}/tfplan
         echo "Plan artifacts uploaded to gs://$_STATE_BUCKET/plans/${BUILD_ID}/"
 
 substitutions:
-  _PROJECT_ID: 'your-gcp-project-id'
-  _STATE_BUCKET: 'your-state-bucket-name'
-  _ALLOW_DESTRUCTIVE_CHANGES: 'false'
+  _PROJECT_ID: "your-gcp-project-id"
+  _STATE_BUCKET: "your-state-bucket-name"
+  _ALLOW_DESTRUCTIVE_CHANGES: "false"
 
-timeout: '1200s'
+timeout: "1200s"
 
 options:
   logging: CLOUD_LOGGING_ONLY
