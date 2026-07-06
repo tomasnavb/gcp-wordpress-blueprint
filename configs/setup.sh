@@ -8,6 +8,8 @@ export PROJECT_ID="your-gcp-project-id"
 export STATE_BUCKET="${PROJECT_ID}-wordpress-terraform-state"   # passed to terraform init via -backend-config in Cloud Build
 export REGION="europe-west1"
 export CB_SA="terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
+export REPO_NAME="your-repo-name"
+export REPO_OWNER="your-github-username-or-org"
 
 # ==============================================================
 # Enable APIs required before Terraform runs
@@ -139,9 +141,6 @@ if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
   echo "or create the triggers manually with the gcloud commands below."
   exit 0
 fi
-
-export REPO_NAME="your-repo-name"
-export REPO_OWNER="your-github-username-or-org"
 
 # Packer trigger — fires on push to main only when packer/ files change.
 # Builds a new golden image and registers it under the wordpress-golden image family.
