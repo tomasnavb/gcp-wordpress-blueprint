@@ -106,65 +106,189 @@ wordpress_site/
 
 ## Prerequisites
 
-- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.0
-- [Packer](https://developer.hashicorp.com/packer/install) >= 1.9
-- [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
 - A GCP project with billing enabled
-- A GCS bucket for Terraform remote state
+- A GitHub account with this repository forked or cloned
+- [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for local operations)
+- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.15.7 (only needed for local state operations)
+
+The CI/CD pipeline runs entirely on **Cloud Build** — Terraform and Packer are not required locally for normal deployments.
 
 ---
 
 ## Deployment
 
-### 1. Authenticate
+The deployment is split into two phases: a one-time **bootstrap** that sets up Cloud Build, and a **CI/CD pipeline** for all subsequent infrastructure changes.
+
+### Phase 1 — Bootstrap (one-time)
+
+#### Step 1: Clone the repository in Cloud Shell
 
 ```bash
-gcloud auth application-default login
+gh auth login
+gh repo clone YOUR_GITHUB_USERNAME/gcp-wordpress-blueprint
+cd gcp-wordpress-blueprint
 ```
 
-### 2. Build the golden image
+#### Step 2: Configure `configs/setup.sh`
+
+Edit the variables at the top of the file:
 
 ```bash
-cd packer/
-packer init .
-packer build -var="project_id=YOUR_PROJECT_ID" wordpress.pkr.hcl
+export PROJECT_ID="your-gcp-project-id"
+export REPO_NAME="gcp-wordpress-blueprint"
+export REPO_OWNER="your-github-username-or-org"
 ```
 
-### 3. Configure Terraform backend
+#### Step 3: Connect the GitHub repository to Cloud Build
 
-Edit `terraform/main.tf` and set the GCS bucket for your Terraform state:
+This step requires OAuth authorization and **cannot** be done via `gcloud`. Do it manually:
 
-```hcl
-backend "gcs" {
-  bucket = "your-terraform-state-bucket"
-  prefix = "environments/prod"
-}
-```
+> GCP Console → Cloud Build → Triggers → Connect Repository → GitHub
 
-### 4. Set required environment variable
+Once the repository is listed as connected, proceed to the next step.
 
-The project ID is intentionally excluded from `terraform.tfvars` to avoid accidental commits.
+#### Step 4: Run the bootstrap script
 
 ```bash
-export TF_VAR_project_id="your-gcp-project-id"
+chmod +x configs/setup.sh
+bash configs/setup.sh
 ```
 
-### 5. Deploy
+This creates:
+- Terraform state bucket (`PROJECT_ID-wordpress-terraform-state`) with versioning and 30-day plan artifact lifecycle
+- Cloud Build service account (`terraform-cloud-build`) with all required IAM roles
+- Three Cloud Build triggers: `packer-build`, `terraform-plan`, `terraform-apply`
+
+---
+
+### Phase 2 — First deploy
+
+#### Step 5: Build the golden image (Packer)
+
+Manually submit the Packer build (Cloud Build trigger fires automatically on future pushes to `packer/**`):
 
 ```bash
-cd terraform/
-terraform init
-terraform plan
-terraform apply
+gcloud builds submit \
+  --project=$PROJECT_ID \
+  --config=cloudbuild/packer.yaml \
+  --substitutions="_PROJECT_ID=$PROJECT_ID,_ZONE=europe-west1-b,_NETWORK=default,_SUBNETWORK=default" \
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
+
+> **Note:** The first Packer build uses the `default` network because the management VPC does not exist yet. After the first `terraform apply`, the trigger will use `wordpress-mgmt-vpc` automatically.
+
+#### Step 6: Generate the Terraform plan
+
+```bash
+gcloud builds submit \
+  --project=$PROJECT_ID \
+  --config=cloudbuild/terraform-plan.yaml \
+  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-wordpress-terraform-state,_ALLOW_DESTRUCTIVE_CHANGES=false" \
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
+```
+
+The build output ends with the `BUILD_ID`. Copy it — you will need it in the next step.
+
+> The plan is saved to `gs://PROJECT_ID-wordpress-terraform-state/plans/BUILD_ID/`.
+> Review `plan.txt` before applying.
+
+#### Step 7: Apply the plan
+
+Replace `PLAN_BUILD_ID` with the ID from Step 6:
+
+```bash
+gcloud builds submit \
+  --project=$PROJECT_ID \
+  --config=cloudbuild/terraform-apply.yaml \
+  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-wordpress-terraform-state,_PLAN_BUILD_ID=PLAN_BUILD_ID" \
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
+```
+
+Once the apply completes, the Load Balancer IP is shown in the Terraform outputs. WordPress will be available at `http://LB_IP` within a few minutes (startup script runs on first boot).
+
+---
+
+### CI/CD flow (ongoing changes)
+
+| Event | Trigger | What runs |
+|---|---|---|
+| Push to `main` with changes in `packer/**` | Automatic | `cloudbuild/packer.yaml` — builds a new golden image |
+| Pull Request targeting `main` | Automatic | `cloudbuild/terraform-plan.yaml` — plan + destructive change check |
+| Manual approval after plan review | Manual | `cloudbuild/terraform-apply.yaml` — applies the reviewed plan |
+
+**To apply a plan generated by a PR trigger:**
+
+```bash
+gcloud beta builds triggers run terraform-apply \
+  --project=$PROJECT_ID \
+  --branch=main \
+  --substitutions=_PLAN_BUILD_ID=PLAN_BUILD_ID_FROM_PR
+```
+
+> Destructive changes (resource replace or destroy) are blocked by default. To override, set `_ALLOW_DESTRUCTIVE_CHANGES=true` in the plan substitutions and re-run.
+
+---
 
 ### Destroy
 
-`deletion_protection` and `prevent_destroy` are enabled on the Cloud SQL instance. To destroy the environment, first disable them in `database.tf`, then run:
+`deletion_protection` and `prevent_destroy` are enabled on the Cloud SQL instance. To destroy the environment:
+
+1. Set `deletion_protection = false` and remove the `prevent_destroy` lifecycle block in [terraform/database.tf](terraform/database.tf)
+2. Run a plan and apply with `_ALLOW_DESTRUCTIVE_CHANGES=true`
+
+---
+
+## Operations
+
+### SSH access via IAP
 
 ```bash
-terraform destroy
+# Management VM
+gcloud compute ssh wordpress-mgmt-vm \
+  --zone=europe-west1-b \
+  --project=YOUR_PROJECT_ID \
+  --tunnel-through-iap
+
+# Production instance (MIG)
+gcloud compute ssh INSTANCE_NAME \
+  --zone=ZONE \
+  --project=YOUR_PROJECT_ID \
+  --tunnel-through-iap
 ```
+
+### Trigger a manual backup
+
+```bash
+# Snapshot (fast, seconds)
+gcloud functions call wordpress-fn-db-backup-prod \
+  --region=europe-west1 \
+  --project=YOUR_PROJECT_ID \
+  --data='{"type": "snapshot"}'
+
+# Export to GCS (full SQL dump)
+gcloud functions call wordpress-fn-db-backup-prod \
+  --region=europe-west1 \
+  --project=YOUR_PROJECT_ID \
+  --data='{"type": "export"}'
+```
+
+View snapshots:
+
+```bash
+gcloud sql backups list --instance=wordpress-prod-db --project=YOUR_PROJECT_ID
+```
+
+View exports:
+
+```bash
+gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
+```
+
+### Update the WordPress image
+
+1. Modify provisioning scripts in `packer/scripts/`
+2. Push to `main` — the `packer-build` trigger fires automatically
+3. Once the new image is registered under the `wordpress-golden` family, run a Terraform plan and apply — the MIG rolling update replaces instances with the new image
 
 ---
 
