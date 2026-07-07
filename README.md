@@ -74,32 +74,55 @@ WordPress database credentials (`db-name`, `db-user`, `db-password`, `db-host`, 
 ## Project Structure
 
 ```
-wordpress_site/
-├── packer/                          # Golden image build
+gcp-wordpress-blueprint/
+├── README.md
+├── docs/
+│   └── architecture.jpeg
+│
+├── configs/
+│   └── setup.sh                     # One-time bootstrap: state bucket, Cloud Build SA, IAM, triggers
+│
+├── cloudbuild/
+│   ├── packer.yaml                  # Cloud Build pipeline: Packer golden image build
+│   ├── terraform-plan.yaml          # Cloud Build pipeline: init, fmt, validate, plan, artifact upload
+│   ├── terraform-apply.yaml         # Cloud Build pipeline: init, download plan, apply
+│   └── scripts/
+│       └── check_destructive.py     # Blocks applies with replace/destroy unless explicitly allowed
+│
+├── packer/
 │   ├── wordpress.pkr.hcl            # Packer template
 │   ├── variables.pkr.hcl
-│   └── scripts/                     # Provisioning scripts
+│   └── scripts/
+│       └── install.sh               # WordPress + PHP + Apache provisioning
 │
 └── terraform/
-    ├── main.tf                      # Providers, backend (GCS)
-    ├── terraform.tfvars             # Variable values
+    ├── main.tf                      # Providers, backend (GCS, bucket via -backend-config)
+    ├── terraform.tfvars             # Variable values (project_id set via TF_VAR_project_id)
+    ├── .terraform.lock.hcl          # Provider version lock (committed for CI/CD consistency)
     ├── APIs.tf                      # GCP API enablement
     ├── compute.tf                   # Management VM + MIG + LB modules
     ├── database.tf                  # Cloud SQL instance, database, user
-    ├── functions.tf                 # Cloud Function + Scheduler modules
+    ├── functions.tf                 # Cloud Function v2 + Cloud Scheduler modules
     ├── IAM.tf                       # Service accounts, roles, bindings
     ├── locals.tf                    # Shared locals (names, roles, secrets map)
     ├── networking.tf                # VPC modules + VPC Peering
     ├── outputs.tf
     ├── private_service_access.tf    # Private Service Access for Cloud SQL
-    ├── secrets.tf                   # Secret Manager resources
-    ├── storage.tf                   # GCS buckets + function source upload
+    ├── secrets.tf                   # Secret Manager secrets and versions
+    ├── storage.tf                   # GCS buckets + Cloud Function source zip upload
     ├── variables_*.tf               # Variables split by domain
+    ├── scripts/
+    │   ├── startup-prod.sh          # MIG instance startup: fetch secrets, configure wp-config.php
+    │   └── startup-mgmt.sh          # Management VM startup: install Cloud SQL Auth Proxy
+    ├── functions/
+    │   └── db-backup/
+    │       ├── main.py              # Cloud Function: snapshot and export backup logic
+    │       └── requirements.txt
     └── modules/
-        ├── cloud_scheduler/         # Cloud Scheduler job
-        ├── external_lb/             # Regional External Application LB
-        ├── mig/                     # Instance template + Regional MIG + Autoscaler
-        └── networking/              # VPC, subnet, firewall rules, Cloud NAT
+        ├── cloud_scheduler/         # Cloud Scheduler job with OIDC auth and retry policy
+        ├── external_lb/             # Proxy-only subnet, forwarding rule, URL map, backend service
+        ├── mig/                     # Instance template, Regional MIG, autoscaler, health check
+        └── networking/              # VPC, subnet, IAP/LB firewall rules, Cloud Router, Cloud NAT
 ```
 
 ---
@@ -231,10 +254,17 @@ gcloud beta builds triggers run terraform-apply \
 
 ### Destroy
 
-`deletion_protection` and `prevent_destroy` are enabled on the Cloud SQL instance. To destroy the environment:
+> **Portfolio note:** `deletion_protection` and `prevent_destroy` are set to `false` in this project to allow easy teardown during testing. In a production environment both should be set to `true` in [terraform/database.tf](terraform/database.tf).
 
-1. Set `deletion_protection = false` and remove the `prevent_destroy` lifecycle block in [terraform/database.tf](terraform/database.tf)
-2. Run a plan and apply with `_ALLOW_DESTRUCTIVE_CHANGES=true`
+```bash
+gcloud builds submit \
+  --project=$PROJECT_ID \
+  --config=cloudbuild/terraform-plan.yaml \
+  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-wordpress-terraform-state,_ALLOW_DESTRUCTIVE_CHANGES=true" \
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
+```
+
+Then apply with the resulting `PLAN_BUILD_ID`. Alternatively, run `terraform destroy` locally after initializing the backend.
 
 ---
 
@@ -310,6 +340,48 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 - SSH access exclusively through IAP (no open port 22 to the internet)
 - Database credentials stored in Secret Manager, never in environment variables or files
 - `project_id` excluded from version control — set via `TF_VAR_project_id`
-- Cloud SQL instance has `deletion_protection = true` and `prevent_destroy = true`
+- Cloud SQL instance has `deletion_protection` and `prevent_destroy` set to `false` for portfolio teardown convenience (set to `true` in production)
 - Least-privilege service accounts per workload (VM, function, scheduler)
 - Custom IAM role for the backup function with only the required Cloud SQL permissions
+
+---
+
+## Screenshots
+
+> Screenshots are stored in [`docs/`](docs/) and added progressively as the project is tested end-to-end.
+
+### Cloud Build — Triggers
+
+![Cloud Build Triggers](docs/screenshots/cloudbuild-triggers.png)
+
+### Cloud Build — Terraform Plan
+
+![Terraform Plan](docs/screenshots/cloudbuild-plan.png)
+
+### Cloud Build — Terraform Apply
+
+![Terraform Apply](docs/screenshots/cloudbuild-apply.png)
+
+### Managed Instance Group — Healthy
+
+![MIG Health](docs/screenshots/mig-healthy.png)
+
+### Load Balancer — Backend Healthy
+
+![LB Backend](docs/screenshots/lb-backend.png)
+
+### Cloud SQL — Private IP, No Public Endpoint
+
+![Cloud SQL](docs/screenshots/cloudsql.png)
+
+### Secret Manager — Secrets
+
+![Secret Manager](docs/screenshots/secret-manager.png)
+
+### WordPress — Online via Load Balancer
+
+![WordPress](docs/screenshots/wordpress-online.png)
+
+### Cloud SQL — Backup Snapshots
+
+![Backups](docs/screenshots/cloudsql-backups.png)
