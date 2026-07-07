@@ -1,7 +1,7 @@
 # Terraform configuration for Google Cloud resources, including provider configuration and required provider versions.
 
 terraform {
-  required_version = "1.15.7"
+  required_version = ">= 1.15.7"
   required_providers {
     google = {
       source  = "hashicorp/google"
