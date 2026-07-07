@@ -110,6 +110,11 @@ gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${CB_SA}" \
   --role="roles/logging.logWriter"
 
+# IAM — custom role management (required for google_project_iam_custom_role resources)
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/iam.roleAdmin"
+
 # IAM — Terraform creates service accounts and assigns roles to resources
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${CB_SA}" \

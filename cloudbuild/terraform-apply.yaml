@@ -12,6 +12,13 @@ steps:
         fi
         echo "Using Terraform plan from build: $_PLAN_BUILD_ID"
 
+  # Create tmp directory required by archive_file data source (Cloud Function zip)
+  - id: "create-tmp"
+    name: "alpine"
+    dir: "terraform"
+    entrypoint: "sh"
+    args: ["-c", "mkdir -p tmp"]
+
   # Initialize Terraform
   - id: "terraform-init"
     name: "hashicorp/terraform:1.15.7"
