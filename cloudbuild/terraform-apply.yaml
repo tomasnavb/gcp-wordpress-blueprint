@@ -38,7 +38,8 @@ steps:
       - "-c"
       - |
         gcloud storage cp gs://$_STATE_BUCKET/plans/$_PLAN_BUILD_ID/tfplan tfplan
-        echo "Plan downloaded from gs://$_STATE_BUCKET/plans/$_PLAN_BUILD_ID/tfplan"
+        gcloud storage cp gs://$_STATE_BUCKET/plans/$_PLAN_BUILD_ID/db_backup.zip tmp/db_backup.zip
+        echo "Plan artifacts downloaded from gs://$_STATE_BUCKET/plans/$_PLAN_BUILD_ID/"
 
   # Apply the previously generated plan.
   - id: "terraform-apply"

@@ -82,6 +82,7 @@ steps:
       - |
         gcloud storage cp plan.txt gs://$_STATE_BUCKET/plans/${BUILD_ID}/plan.txt
         gcloud storage cp tfplan gs://$_STATE_BUCKET/plans/${BUILD_ID}/tfplan
+        gcloud storage cp tmp/db_backup.zip gs://$_STATE_BUCKET/plans/${BUILD_ID}/db_backup.zip
         echo "Plan artifacts uploaded to gs://$_STATE_BUCKET/plans/${BUILD_ID}/"
 
 substitutions:
