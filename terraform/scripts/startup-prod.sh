@@ -6,12 +6,33 @@ set -e
 
 PROJECT_ID=$(curl -s "http://metadata.google.internal/computeMetadata/v1/project/project-id" -H "Metadata-Flavor: Google")
 
+fetch_secret() {
+  local secret_name=$1
+  local max_attempts=10
+  local attempt=1
+  local value
+
+  while [ $attempt -le $max_attempts ]; do
+    value=$(gcloud secrets versions access latest --secret="$secret_name" --project="$PROJECT_ID" 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$value" ]; then
+      echo "$value"
+      return 0
+    fi
+    echo ">>> Attempt $attempt/$max_attempts: waiting for secret $secret_name..." >&2
+    sleep 10
+    attempt=$((attempt + 1))
+  done
+
+  echo ">>> ERROR: Failed to fetch secret $secret_name after $max_attempts attempts." >&2
+  return 1
+}
+
 echo ">>> Fetching credentials from Secret Manager..."
 
-DB_NAME=$(gcloud secrets versions access latest --secret="wordpress-db-name" --project="$PROJECT_ID" 2>/dev/null)
-DB_USER=$(gcloud secrets versions access latest --secret="wordpress-db-user" --project="$PROJECT_ID" 2>/dev/null)
-DB_PASSWORD=$(gcloud secrets versions access latest --secret="wordpress-db-password" --project="$PROJECT_ID" 2>/dev/null)
-DB_HOST=$(gcloud secrets versions access latest --secret="wordpress-db-host" --project="$PROJECT_ID" 2>/dev/null)
+DB_NAME=$(fetch_secret "wordpress-db-name")
+DB_USER=$(fetch_secret "wordpress-db-user")
+DB_PASSWORD=$(fetch_secret "wordpress-db-password")
+DB_HOST=$(fetch_secret "wordpress-db-host")
 
 echo ">>> Injecting credentials into wp-config.php..."
 
