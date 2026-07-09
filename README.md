@@ -368,6 +368,10 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 
 ![Secret Manager](docs/screenshots/secrets.png)
 
+### Cloud Scheduler — Backup Jobs
+
+![Cloud Scheduler](docs/screenshots/scheduler_executions.png)
+
 ### WordPress — Online via Load Balancer
 
 ![WordPress](docs/screenshots/wordpress_online.png)
