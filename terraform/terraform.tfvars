@@ -5,7 +5,7 @@
 # ==============================================================
 project_region = "europe-west1"
 project_zone   = "europe-west1-b"
-iap_user_email = "tomasnavarro.dev@gmail.com"
+iap_user_email = "your-email-address"
 
 # ==============================================================
 # NETWORKING
