@@ -54,7 +54,7 @@ data "archive_file" "function_zip" {
 # Upload the Cloud Function source code to the storage bucket
 resource "google_storage_bucket_object" "function_code" {
   bucket = google_storage_bucket.scripts.name
-  name   = "backup-prod.zip"
+  name   = "backup-prod-${data.archive_file.function_zip.output_md5}.zip"
   source = data.archive_file.function_zip.output_path
 
 
