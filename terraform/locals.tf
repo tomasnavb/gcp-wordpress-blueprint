@@ -17,6 +17,7 @@ locals {
         "cloudsql.instances.get",
         "cloudsql.instances.list",
         "cloudsql.backupRuns.create",
+        "cloudsql.backupRuns.export",
         "cloudsql.backupRuns.list",
         "cloudsql.backupRuns.get"
       ]
