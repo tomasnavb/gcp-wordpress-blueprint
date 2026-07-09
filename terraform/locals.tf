@@ -5,7 +5,7 @@ locals {
     cloudsql_editor         = "roles/cloudsql.editor"
     bucket_admin            = "roles/storage.admin"
     secret_manager_accessor = "roles/secretmanager.secretAccessor"
-    fn_invoker              = "roles/cloudfunctions.invoker"
+    fn_invoker              = "roles/run.invoker"
     compute_viewer          = "roles/compute.viewer"
     log_writer              = "roles/logging.logWriter"
     os_admin_login          = "roles/compute.osAdminLogin"
