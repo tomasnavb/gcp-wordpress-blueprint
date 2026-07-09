@@ -16,6 +16,7 @@ locals {
       permissions = [
         "cloudsql.instances.get",
         "cloudsql.instances.list",
+        "cloudsql.instances.export",
         "cloudsql.backupRuns.create",
         "cloudsql.backupRuns.export",
         "cloudsql.backupRuns.list",
