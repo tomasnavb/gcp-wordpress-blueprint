@@ -375,3 +375,16 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 ### WordPress — Online via Load Balancer
 
 ![WordPress](docs/screenshots/wordpress_online.png)
+
+---
+
+## Roadmap
+
+Features not implemented in this version but planned as natural next steps:
+
+- **Cloud Monitoring & Alerting** — uptime checks on the load balancer IP, alert policies for Apache error rate and instance health, Cloud Ops Agent for OS-level and Apache metrics (requests/s, latency, error rate)
+- **HTTPS / Managed SSL** — add a Google-managed SSL certificate to the load balancer and redirect HTTP to HTTPS
+- **Cloud Armor** — WAF rules and DDoS protection in front of the load balancer
+- **Cloud CDN** — enable caching at the load balancer level for static WordPress assets
+- **Terraform tests** — infrastructure validation using `terraform test` or Terratest
+- **Multi-region failover** — promote the Cloud SQL read replica to a second region and extend the MIG distribution policy
