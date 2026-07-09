@@ -348,40 +348,26 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 
 ## Screenshots
 
-> Screenshots are stored in [`docs/`](docs/) and added progressively as the project is tested end-to-end.
-
 ### Cloud Build — Triggers
 
-![Cloud Build Triggers](docs/screenshots/cloudbuild-triggers.png)
+![Cloud Build Triggers](docs/screenshots/gcb_activators.png)
 
-### Cloud Build — Terraform Plan
+### Cloud Build — Terraform Plan (successful)
 
-![Terraform Plan](docs/screenshots/cloudbuild-plan.png)
+![Terraform Plan](docs/screenshots/gcb_success_plan.png)
 
-### Cloud Build — Terraform Apply
+### Compute Engine — VM Instances (MIG)
 
-![Terraform Apply](docs/screenshots/cloudbuild-apply.png)
+![VM Instances](docs/screenshots/vm_instances.png)
 
-### Managed Instance Group — Healthy
+### Cloud SQL — Instance
 
-![MIG Health](docs/screenshots/mig-healthy.png)
-
-### Load Balancer — Backend Healthy
-
-![LB Backend](docs/screenshots/lb-backend.png)
-
-### Cloud SQL — Private IP, No Public Endpoint
-
-![Cloud SQL](docs/screenshots/cloudsql.png)
+![Cloud SQL](docs/screenshots/cloudsql_instance.png)
 
 ### Secret Manager — Secrets
 
-![Secret Manager](docs/screenshots/secret-manager.png)
+![Secret Manager](docs/screenshots/secrets.png)
 
 ### WordPress — Online via Load Balancer
 
-![WordPress](docs/screenshots/wordpress-online.png)
-
-### Cloud SQL — Backup Snapshots
-
-![Backups](docs/screenshots/cloudsql-backups.png)
+![WordPress](docs/screenshots/wordpress_online.png)
