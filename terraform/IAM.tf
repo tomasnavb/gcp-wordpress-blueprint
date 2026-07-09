@@ -71,12 +71,14 @@ resource "google_project_iam_member" "mgmt_iap_tunnel_access" {
 }
 
 # IAM binding for the Cloud Scheduler SA to invoke the backup Cloud Function.
-resource "google_cloudfunctions2_function_iam_member" "fn_invoker_binding" {
-  project        = var.project_id
-  location       = google_cloudfunctions2_function.db_backup_fn.location
-  cloud_function = google_cloudfunctions2_function.db_backup_fn.name
-  role           = local.roles.fn_invoker
-  member         = local.service_accounts.scheduler
+# Cloud Functions v2 runs on Cloud Run — roles/run.invoker must be bound on the
+# underlying Cloud Run service, not on the Cloud Functions resource.
+resource "google_cloud_run_v2_service_iam_member" "fn_invoker_binding" {
+  project  = var.project_id
+  location = google_cloudfunctions2_function.db_backup_fn.location
+  name     = google_cloudfunctions2_function.db_backup_fn.name
+  role     = local.roles.fn_invoker
+  member   = local.service_accounts.scheduler
 }
 
 # Management VM service account.
