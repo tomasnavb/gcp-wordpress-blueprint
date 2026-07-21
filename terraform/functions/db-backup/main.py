@@ -1,6 +1,6 @@
-import functions_framework
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+import functions_framework # type: ignore
+from googleapiclient.discovery import build # pyright: ignore[reportMissingImports]
+from googleapiclient.errors import HttpError # type: ignore
 import logging
 from datetime import datetime
 import json
