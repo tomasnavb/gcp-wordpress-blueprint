@@ -21,7 +21,7 @@ resource "google_storage_bucket_iam_member" "bucket_admin" {
 
 # IAM binding for the Cloud Run Functions running the DB backups
 resource "google_storage_bucket_iam_member" "db_backup_fn_binding" {
-  bucket = google_storage_bucket.scripts
+  bucket = google_storage_bucket.scripts.name
   role   = "roles/storage.objectViewer"
   member = local.service_accounts.fn
 }
