@@ -66,7 +66,7 @@ resource "google_compute_url_map" "http_redirect" {
 resource "google_compute_region_target_http_proxy" "external_lb_http_proxy" {
   name    = var.lb_name
   region  = var.region
-  url_map = google_compute_region_url_map.http_redirect.id
+  url_map = google_compute_url_map.http_redirect.id
 
   depends_on = [google_compute_subnetwork.external_lb_proxy]
 }
