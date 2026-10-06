@@ -19,6 +19,13 @@ resource "google_storage_bucket_iam_member" "bucket_admin" {
   member = local.service_accounts.sql_instance
 }
 
+# IAM binding for the Cloud Run Functions running the DB backups
+resource "google_storage_bucket_iam_member" "db_backup_fn_binding" {
+  bucket = google_storage_bucket.scripts
+  role   = "roles/storage.objectViewer"
+  member = local.service_accounts.fn
+}
+
 # IAM binding for the backup Cloud Function SA to use the custom CloudSQL backup role.
 resource "google_project_iam_member" "cloudsql_backup_fn_role_binding" {
   project = var.project_id
