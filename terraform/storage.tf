@@ -32,6 +32,8 @@ resource "google_storage_bucket" "cloudsql_backups" {
     }
   }
 
+  uniform_bucket_level_access = true
+
 }
 
 # Storage bucket for Cloud Function source code
@@ -40,6 +42,8 @@ resource "google_storage_bucket" "scripts" {
   name          = local.scripts_bucket_name
   location      = "EU"
   storage_class = "STANDARD"
+
+  uniform_bucket_level_access = true
 
 }
 
