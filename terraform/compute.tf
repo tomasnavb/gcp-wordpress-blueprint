@@ -80,14 +80,15 @@ module "wordpress_regional_mig" {
 module "external_lb" {
   source = "./modules/external_lb"
 
+  # LB Firewall Health Checks
+  project_id        = var.project_id
+  target_tags       = var.instance_template_tags
+  network_self_link = module.vpc_prod.vpc_self_link
+
   # Required network references
-  region                = var.subnet_prod_region
-  vpc_id                = module.vpc_prod.vpc_id
-  dedicated_subnet_cidr = var.lb_dedicated_ip_cidr
-  mig_instance_group    = module.wordpress_regional_mig.instance_group
+  mig_instance_group = module.wordpress_regional_mig.instance_group
 
   # Resource names (module appends "-external-lb" suffix to subnet, IP, url_map, health_check)
-  subnet_name          = "wordpress-prod-lb-proxy"
   ip_address_name      = "wordpress-prod-lb-ip"
   lb_name              = "wordpress-prod-lb"
   url_map_name         = "wordpress-prod-lb-url-map"
@@ -96,7 +97,6 @@ module "external_lb" {
   domain_names         = var.domain_names
 
   # LB configuration
-  subnet_role              = "ACTIVE"
   http_health_check_port   = 80
   backend_service_protocol = "HTTP"
   load_balancing_scheme    = "EXTERNAL_MANAGED"

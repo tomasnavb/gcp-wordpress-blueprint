@@ -34,7 +34,7 @@ resource "google_compute_firewall" "allow_ssh_from_iap" {
   target_tags   = var.iap_target_tags
 }
 
-resource "google_compute_firewall" "allow_lb_health_checks" {
+/* resource "google_compute_firewall" "allow_lb_health_checks" {
   count     = var.allow_external_lb ? 1 : 0
   name      = local.lb_hc_fw_rule_name
   network   = google_compute_network.this.self_link
@@ -64,7 +64,7 @@ resource "google_compute_firewall" "allow_lb_subnet" {
 
   source_ranges = var.lb_subnets_ranges
   target_tags   = var.backend_target_tags
-}
+} */
 
 resource "google_compute_router" "this" {
   count   = var.enable_nat ? 1 : 0

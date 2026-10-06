@@ -1,26 +1,16 @@
-variable "region" {
-  description = "GCP region for all load balancer resources"
+variable "project_id" {
+  description = "Project ID used to allow Load Balancer Firewall Rules"
   type        = string
 }
 
-variable "vpc_id" {
-  description = "Self-link of the VPC network where the proxy-only subnet and forwarding rule are created"
+variable "network_self_link" {
+  description = "Network Self Link to allow Load balancer Firewall Rules"
   type        = string
 }
 
-variable "dedicated_subnet_cidr" {
-  description = "IP CIDR block for the proxy-only subnet (REGIONAL_MANAGED_PROXY purpose)"
-  type        = string
-}
-
-variable "subnet_name" {
-  description = "Base name for the proxy-only subnet (the module appends '-external-lb' as suffix)"
-  type        = string
-}
-
-variable "subnet_role" {
-  description = "Role for the proxy-only subnet (ACTIVE for the subnet currently handling traffic)"
-  type        = string
+variable "target_tags" {
+  description = "Target tags referencing the backend Compute Instances"
+  type        = list(string)
 }
 
 variable "ip_address_name" {

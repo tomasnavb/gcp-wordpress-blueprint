@@ -23,11 +23,11 @@ module "vpc_prod" {
   iap_fw_rule_priority = 1000
   iap_target_tags      = ["iap-ssh-access"]
 
-  # External LB
+  /*   # External LB
   allow_external_lb   = true
   lb_fw_rule_priority = 1000
   backend_target_tags = ["backend-service"]
-  lb_subnets_ranges   = [var.lb_dedicated_ip_cidr]
+  lb_subnets_ranges   = [var.lb_dedicated_ip_cidr] */
 }
 
 module "vpc_mgmt" {
@@ -56,10 +56,10 @@ module "vpc_mgmt" {
   iap_target_tags      = ["iap-ssh-access"]
 
   # External LB (not applicable to management VPC)
-  allow_external_lb   = false
+  /*   allow_external_lb   = false
   lb_fw_rule_priority = 1000
   backend_target_tags = []
-  lb_subnets_ranges   = []
+  lb_subnets_ranges   = [] */
 }
 
 resource "google_compute_network_peering" "peering-prod-mgmt" {

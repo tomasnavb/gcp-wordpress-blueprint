@@ -63,7 +63,7 @@ variable "iap_target_tags" {
   type        = list(string)
 }
 
-variable "allow_external_lb" {
+/* variable "allow_external_lb" {
   description = "Whether to create firewall rules for external LB health checks and proxy traffic"
   type        = bool
 }
@@ -81,4 +81,4 @@ variable "backend_target_tags" {
 variable "lb_subnets_ranges" {
   description = "Source IP CIDR ranges for the LB proxy subnet firewall rule (the proxy-only subnet CIDR)"
   type        = list(string)
-}
+} */
