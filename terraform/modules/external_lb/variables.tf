@@ -33,9 +33,9 @@ variable "lb_name" {
   type        = string
 }
 
-variable "listener_port" {
-  description = "External port the load balancer listens on (e.g. 80 for HTTP)"
-  type        = number
+variable "domain_names" {
+  description = "Domains to include into the Google Managed SSL ceritificates"
+  type        = list(string)
 }
 
 variable "url_map_name" {

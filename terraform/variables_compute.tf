@@ -16,3 +16,9 @@ variable "lb_dedicated_ip_cidr" {
   type        = string
   default     = "10.0.1.0/24"
 }
+
+variable "domain_names" {
+  description = "Domains names to include into the Google Managed SSL certificates for the External LB"
+  type        = list(string)
+  default     = ["wordpress.tomasnavarro.dev"]
+}

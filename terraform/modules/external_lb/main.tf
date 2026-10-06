@@ -21,34 +21,52 @@ resource "google_compute_address" "external_ip" {
   region = var.region
 }
 
-# Forwarding rule — entry point for external traffic
+# Google Managed SSL Certificate
+resource "google_compute_managed_ssl_certificate" "https" {
+  name = "web-ssl-cert"
+
+  managed {
+    domains = var.domain_names
+  }
+}
+
+# HTTPS target proxy
+resource "google_compute_target_https_proxy" "web" {
+  name             = "web-https-proxy"
+  url_map          = google_compute_region_url_map.external_lb_url_map.id
+  ssl_certificates = [google_compute_managed_ssl_certificate.https.id]
+}
+
+# Forwarding rule for HTTPS traffic - External LB entry-point
 resource "google_compute_forwarding_rule" "external_lb" {
   name                  = local.fr_full_name
   region                = var.region
   ip_protocol           = local.ip_protocol
   load_balancing_scheme = var.load_balancing_scheme
-  port_range            = var.listener_port
+  port_range            = "443"
   network               = var.vpc_id
   ip_address            = google_compute_address.external_ip.address
-  target                = google_compute_region_target_http_proxy.external_lb_http_proxy.id
+  target                = google_compute_target_https_proxy.web.id
 
   depends_on = [google_compute_subnetwork.external_lb_proxy]
 }
 
-# URL map — routes requests to the backend service
-resource "google_compute_region_url_map" "external_lb_url_map" {
-  name            = "${var.url_map_name}${local.lb_suffix}"
-  region          = var.region
-  default_service = google_compute_region_backend_service.mig.self_link
+# # URL map that redirects all HTTP to HTTPS
+resource "google_compute_url_map" "http_redirect" {
+  name = "http-redirect"
 
-  depends_on = [google_compute_subnetwork.external_lb_proxy]
+  default_url_redirect {
+    https_redirect         = true
+    redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
+    strip_query            = false
+  }
 }
 
-# HTTP proxy — connects the forwarding rule to the URL map
+# HTTP Proxy - Redirects to HTTPS
 resource "google_compute_region_target_http_proxy" "external_lb_http_proxy" {
   name    = var.lb_name
   region  = var.region
-  url_map = google_compute_region_url_map.external_lb_url_map.id
+  url_map = google_compute_region_url_map.http_redirect.id
 
   depends_on = [google_compute_subnetwork.external_lb_proxy]
 }
@@ -62,6 +80,15 @@ resource "google_compute_region_health_check" "backend_health_check" {
     port         = var.http_health_check_port
     request_path = "/health.php"
   }
+}
+
+# URL map — routes requests to the backend service
+resource "google_compute_region_url_map" "external_lb_url_map" {
+  name            = "${var.url_map_name}${local.lb_suffix}"
+  region          = var.region
+  default_service = google_compute_region_backend_service.mig.self_link
+
+  depends_on = [google_compute_subnetwork.external_lb_proxy]
 }
 
 # Backend service — connects the URL map to the MIG

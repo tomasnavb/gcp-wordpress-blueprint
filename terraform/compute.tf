@@ -93,10 +93,10 @@ module "external_lb" {
   url_map_name         = "wordpress-prod-lb-url-map"
   health_check_name    = "wordpress-prod-lb-hc"
   backend_service_name = "wordpress-prod-lb-backend-service"
+  domain_names         = var.domain_names
 
   # LB configuration
   subnet_role              = "ACTIVE"
-  listener_port            = 80
   http_health_check_port   = 80
   backend_service_protocol = "HTTP"
   load_balancing_scheme    = "EXTERNAL_MANAGED"
