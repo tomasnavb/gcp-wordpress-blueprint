@@ -172,9 +172,9 @@ gh repo clone YOUR_GITHUB_USERNAME/gcp-wordpress-blueprint
 cd gcp-wordpress-blueprint
 ```
 
-#### Step 2: Configure `configs/setup.sh`
+#### Step 2: Set the deployment variables
 
-Edit the variables at the top of the file:
+Export them in the shell. `configs/setup.sh` reads them, and the commands of the next steps use them too, so no file is edited with your own values:
 
 ```bash
 export PROJECT_ID="your-gcp-project-id"
@@ -183,6 +183,8 @@ export REPO_OWNER="your-github-username-or-org"
 export IAP_USER_EMAIL="you@example.com"     # Google account granted SSH access through IAP
 export RESERVE_LB_IP="true"                 # reserve a static IP for the load balancer (see below)
 ```
+
+The script stops with an error if any of the first four is missing.
 
 Set your domain in `terraform/terraform.tfvars`:
 
@@ -240,7 +242,7 @@ gcloud builds submit \
 gcloud builds submit \
   --project=$PROJECT_ID \
   --config=cloudbuild/terraform-plan.yaml \
-  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-wordpress-terraform-state,_IAP_USER_EMAIL=you@example.com,_SAVE_PLAN=true" \
+  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-wordpress-terraform-state,_IAP_USER_EMAIL=$IAP_USER_EMAIL,_SAVE_PLAN=true" \
   --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
@@ -337,7 +339,7 @@ cd terraform
 mkdir -p tmp
 terraform init -backend-config="bucket=${PROJECT_ID}-wordpress-terraform-state"
 export TF_VAR_project_id=$PROJECT_ID
-export TF_VAR_iap_user_email=you@example.com
+export TF_VAR_iap_user_email=$IAP_USER_EMAIL
 terraform destroy
 ```
 

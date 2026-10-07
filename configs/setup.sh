@@ -2,22 +2,34 @@
 set -e
 
 # ==============================================================
-# Variables — update before running
+# Variables
+#
+# Export them in your shell before running, so this file is never edited with real values:
+#   export PROJECT_ID="my-project" REPO_NAME="my-repo" REPO_OWNER="my-user" IAP_USER_EMAIL="me@example.com"
+# A variable that is not exported keeps the placeholder below, and the script stops.
 # ==============================================================
-export PROJECT_ID="your-gcp-project-id"
+export PROJECT_ID="${PROJECT_ID:-your-gcp-project-id}"
 export STATE_BUCKET="${PROJECT_ID}-wordpress-terraform-state"   # passed to terraform init via -backend-config in Cloud Build
 export REGION="europe-west1"
 export CB_SA="terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
-export REPO_NAME="your-repo-name"
-export REPO_OWNER="your-github-username-or-org"
-export IAP_USER_EMAIL="your-email-address"   # Google account granted SSH access through IAP
+export REPO_NAME="${REPO_NAME:-your-repo-name}"
+export REPO_OWNER="${REPO_OWNER:-your-github-username-or-org}"
+export IAP_USER_EMAIL="${IAP_USER_EMAIL:-your-email-address}"   # Google account granted SSH access through IAP
 
 # Static IP for the load balancer. Must match lb_use_reserved_ip in terraform/terraform.tfvars.
 #   true  — reserve a global IP here, outside Terraform. It survives terraform destroy, so the
 #           DNS record is set once. It is billed while no load balancer is using it.
 #   false — skip. Terraform creates the IP with the load balancer and destroys it with it.
-export RESERVE_LB_IP="true"
+export RESERVE_LB_IP="${RESERVE_LB_IP:-true}"
 export LB_IP_NAME="wordpress-prod-lb-ip-global-external-lb"   # name Terraform looks up; do not change one without the other
+
+# Stop before creating anything if a required variable still has its placeholder.
+for var_name in PROJECT_ID REPO_NAME REPO_OWNER IAP_USER_EMAIL; do
+  if [[ "${!var_name}" == your-* ]]; then
+    echo "ERROR: ${var_name} is not set. Export it before running this script." >&2
+    exit 1
+  fi
+done
 
 # ==============================================================
 # Enable APIs required before Terraform runs
