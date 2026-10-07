@@ -1,12 +1,35 @@
 steps:
+  # Install a pinned Packer version on top of the gcloud image.
+  # Packer needs gcloud on the same machine to open the IAP tunnel to the build VM (use_iap),
+  # and the official Packer image does not include it. The binary goes to /workspace, which
+  # is shared by every step of the build. The download is checked against a pinned SHA256.
+  - id: 'install-packer'
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        set -e
+        mkdir -p /workspace/bin
+        curl -fsSL -o /tmp/packer.zip https://releases.hashicorp.com/packer/$_PACKER_VERSION/packer_${_PACKER_VERSION}_linux_amd64.zip
+        echo "$_PACKER_SHA256  /tmp/packer.zip" | sha256sum -c -
+        python3 -m zipfile -e /tmp/packer.zip /workspace/bin
+        chmod +x /workspace/bin/packer
+        /workspace/bin/packer version
+
   # Initialize Packer plugins (downloads the googlecompute plugin)
   - id: 'packer-init'
-    name: 'hashicorp/packer:latest'
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: '/workspace/bin/packer'
     args: ['init', 'packer/']
+    env:
+      - 'PACKER_PLUGIN_PATH=/workspace/.packer/plugins'
+      - 'CHECKPOINT_DISABLE=1'
 
   # Validate Packer configuration before building
   - id: 'packer-validate'
-    name: 'hashicorp/packer:latest'
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: '/workspace/bin/packer'
     args:
       - 'validate'
       - '-var'
@@ -17,12 +40,18 @@ steps:
       - 'network=$_NETWORK'
       - '-var'
       - 'subnetwork=$_SUBNETWORK'
+      - '-var'
+      - 'use_iap=$_USE_IAP'
       - 'packer/'
+    env:
+      - 'PACKER_PLUGIN_PATH=/workspace/.packer/plugins'
+      - 'CHECKPOINT_DISABLE=1'
 
   # Build the golden image — creates a temporary VM, runs install.sh, snapshots the disk
   # PACKER_LOG=1 streams provisioner output to Cloud Build logs
   - id: 'packer-build'
-    name: 'hashicorp/packer:latest'
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: '/workspace/bin/packer'
     args:
       - 'build'
       - '-var'
@@ -33,15 +62,26 @@ steps:
       - 'network=$_NETWORK'
       - '-var'
       - 'subnetwork=$_SUBNETWORK'
+      - '-var'
+      - 'use_iap=$_USE_IAP'
       - 'packer/'
     env:
       - 'PACKER_LOG=1'
+      - 'PACKER_PLUGIN_PATH=/workspace/.packer/plugins'
+      - 'CHECKPOINT_DISABLE=1'
 
 substitutions:
   _PROJECT_ID: 'your-gcp-project-id'
   _ZONE: 'europe-west1-b'
   _NETWORK: 'wordpress-mgmt-vpc'
   _SUBNETWORK: 'wordpress-mgmt-subnet'
+  # true  — build VM without external IP, SSH through an IAP tunnel (management VPC)
+  # false — SSH to the VM's external IP; only for the first build in the default network
+  _USE_IAP: 'true'
+  # To upgrade Packer change both values. The checksum is in
+  # https://releases.hashicorp.com/packer/<version>/packer_<version>_SHA256SUMS (linux_amd64 line)
+  _PACKER_VERSION: '1.16.1'
+  _PACKER_SHA256: 'af38a9e93e4ed1b9ca68206ae969c64c300c82a3dde46a780dfa629f0867f651'
 
 # Packer builds can take 10-15 minutes depending on apt-get and WordPress download speed
 timeout: '3600s'

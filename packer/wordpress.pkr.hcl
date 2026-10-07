@@ -33,6 +33,14 @@ source "googlecompute" "wordpress" {
   communicator            = "ssh"
   ssh_username            = "packer"
   temporary_key_pair_type = "ed25519"
+
+  # With use_iap the VM has no external IP and SSH goes through an IAP tunnel (requires gcloud
+  # on the machine running Packer). The tag matches the IAP SSH firewall rule of the VPC.
+  # Without it, Packer connects straight to the VM's external IP.
+  use_iap          = var.use_iap
+  omit_external_ip = var.use_iap
+  use_internal_ip  = var.use_iap
+  tags             = var.use_iap ? ["iap-ssh-access"] : []
 }
 
 # Build steps executed inside the temporary VM

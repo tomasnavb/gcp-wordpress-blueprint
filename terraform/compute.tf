@@ -27,6 +27,15 @@ resource "google_compute_instance" "management" {
   }
 }
 
+# Latest image of the wordpress-golden family, resolved to a concrete image on every plan.
+# The family URL alone never changes, so Terraform would not notice a new Packer build.
+# With the concrete image, a new build shows up as an instance template replacement and
+# the MIG rolls it out. The plan fails here if no image has been built yet.
+data "google_compute_image" "wordpress_golden" {
+  family  = "wordpress-golden"
+  project = var.project_id
+}
+
 module "wordpress_regional_mig" {
   source = "./modules/mig"
 
@@ -35,7 +44,7 @@ module "wordpress_regional_mig" {
   # Instance template
   template_name_prefix  = var.instance_template_name_prefix
   machine_type          = var.machine_type
-  source_image          = local.source_image
+  source_image          = data.google_compute_image.wordpress_golden.self_link
   disk_size_gb          = local.disk_size_gb
   disk_type             = local.disk_type
   network               = module.vpc_prod.vpc_self_link

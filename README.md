@@ -42,7 +42,9 @@ SSH access is granted through IAP tunnel access (`roles/iap.tunnelResourceAccess
 The operator email is not committed: it is passed to the pipeline as the `_IAP_USER_EMAIL` substitution and validated at plan time. In a production environment the binding would go to a Google group (`group:infra-admins@example.com`) instead of a user, so that team changes do not require a Terraform change.
 
 ### Immutable Infrastructure with Packer
-WordPress instances are deployed from a golden image built with Packer (`packer/wordpress.pkr.hcl`). The image includes WordPress, PHP, and all dependencies pre-installed. The MIG instance template references this image family — updates are rolled out by building a new image and triggering a rolling update.
+WordPress instances are deployed from a golden image built with Packer (`packer/wordpress.pkr.hcl`). The image includes WordPress, PHP, and all dependencies pre-installed. Terraform resolves the `wordpress-golden` image family to the concrete latest image on every plan, so a new build shows up as an instance template replacement and the MIG rolls it out.
+
+The build VM has no external IP: Packer reaches it through an IAP tunnel in the management VPC, the same way an operator does.
 
 ### Two Backup Strategies
 - **Export backup** (Cloud SQL export to GCS) — daily at midnight, 90-day retention via lifecycle rule. Full data portability.
@@ -85,7 +87,7 @@ gcp-wordpress-blueprint/
 │   └── setup.sh                     # One-time bootstrap: state bucket, Cloud Build SA, IAM, triggers
 │
 ├── cloudbuild/
-│   ├── packer.yaml                  # Cloud Build pipeline: Packer golden image build
+│   ├── packer.yaml                  # Cloud Build pipeline: install pinned Packer, golden image build
 │   ├── terraform-plan.yaml          # Cloud Build pipeline: init, fmt, validate, plan, destructive change report, artifact upload
 │   ├── terraform-apply.yaml         # Cloud Build pipeline: init, download plan, destructive change check, apply
 │   └── scripts/
@@ -197,11 +199,13 @@ Manually submit the Packer build (Cloud Build trigger fires automatically on fut
 gcloud builds submit \
   --project=$PROJECT_ID \
   --config=cloudbuild/packer.yaml \
-  --substitutions="_PROJECT_ID=$PROJECT_ID,_ZONE=europe-west1-b,_NETWORK=default,_SUBNETWORK=default" \
+  --substitutions="_PROJECT_ID=$PROJECT_ID,_ZONE=europe-west1-b,_NETWORK=default,_SUBNETWORK=default,_USE_IAP=false" \
   --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
-> **Note:** The first Packer build uses the `default` network because the management VPC does not exist yet. After the first `terraform apply`, the trigger will use `wordpress-mgmt-vpc` automatically.
+> **Note:** This first build is the one exception to the "no public IPs" rule. The management VPC, its IAP firewall rule and the IAP API are created by Terraform, and Terraform needs the image to exist first. So the first build runs in the `default` network with `_USE_IAP=false`: the temporary build VM gets an external IP and Packer connects to it over SSH directly. The VM is deleted when the build ends.
+>
+> Every later build runs from the `packer-build` trigger with `_USE_IAP=true`: the build VM is created in `wordpress-mgmt-vpc` with no external IP and Packer connects through an IAP tunnel.
 
 #### Step 6: Generate the Terraform plan
 
@@ -346,8 +350,17 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 ### Update the WordPress image
 
 1. Modify provisioning scripts in `packer/scripts/`
-2. Push to `main` — the `packer-build` trigger fires automatically
-3. Once the new image is registered under the `wordpress-golden` family, run a Terraform plan and apply — the MIG rolling update replaces instances with the new image
+2. Merge to `main` — the `packer-build` trigger fires automatically and registers a new image under the `wordpress-golden` family (10-15 minutes)
+3. When the build has finished, generate a plan. A change in `packer/**` alone does not trigger one:
+
+   ```bash
+   gcloud builds triggers run terraform-plan-main \
+     --project=$PROJECT_ID \
+     --branch=main
+   ```
+
+   The plan shows the instance template being replaced with the new image.
+4. Apply that plan with `terraform-apply` — the MIG rolling update replaces the instances. An instance template replacement does not need `_ALLOW_DESTRUCTIVE=true`
 
 ---
 

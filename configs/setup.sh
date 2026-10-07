@@ -88,6 +88,11 @@ gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${CB_SA}" \
   --role="roles/compute.admin"
 
+# IAP — Packer reaches its temporary build VM through an IAP tunnel (no external IP)
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/iap.tunnelResourceAccessor"
+
 # Cloud SQL — instances, databases, users
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${CB_SA}" \
@@ -176,6 +181,8 @@ fi
 # Packer trigger — fires on push to main only when packer/ files change.
 # Builds a new golden image and registers it under the wordpress-golden image family.
 # NOT triggered on PRs — Packer creates real GCP resources and takes 10-15 minutes.
+# _USE_IAP=true: the build VM has no external IP and Packer connects through an IAP tunnel.
+# This needs the management VPC, so the trigger only works after the first terraform apply.
 gcloud builds triggers create github \
   --project=${PROJECT_ID} \
   --name="packer-build" \
@@ -184,7 +191,7 @@ gcloud builds triggers create github \
   --branch-pattern="^main$" \
   --included-files="packer/**" \
   --build-config="cloudbuild/packer.yaml" \
-  --substitutions="_PROJECT_ID=${PROJECT_ID},_ZONE=europe-west1-b,_NETWORK=wordpress-mgmt-vpc,_SUBNETWORK=wordpress-mgmt-subnet" \
+  --substitutions="_PROJECT_ID=${PROJECT_ID},_ZONE=europe-west1-b,_NETWORK=wordpress-mgmt-vpc,_SUBNETWORK=wordpress-mgmt-subnet,_USE_IAP=true" \
   --service-account="projects/${PROJECT_ID}/serviceAccounts/${CB_SA}"
 
 # PR plan trigger — fires automatically on every PR targeting main.
