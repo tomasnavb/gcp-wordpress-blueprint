@@ -67,6 +67,26 @@ The build VM has no external IP: Packer reaches it through an IAP tunnel in the 
 
 Both are triggered by two Cloud Scheduler jobs invoking the same Cloud Function v2 with different payload types.
 
+### Dedicated Build Identity for the Backup Function
+A Cloud Function v2 involves three identities, and they are easy to confuse:
+
+| Identity | What it does | In this project |
+|---|---|---|
+| Deployer | Creates the function | `terraform-cloud-build`, the pipeline service account |
+| Build | Runs the Cloud Build that turns the source into a container image | `cloudsql-backup-fn-build-sa` |
+| Runtime | Runs the function code | `cloudsql-backup-fn-sa` |
+
+Left unset, the build identity is the Compute Engine default service account, which then needs broad roles added by hand. This project gives the build its own service account with three roles:
+
+- `roles/logging.logWriter`, to write the build logs.
+- `roles/artifactregistry.writer`, to push the image to the `gcf-artifacts` repository.
+- `roles/storage.objectViewer`, to read the source.
+
+Two details shaped how those roles are granted:
+
+- **The build does not read the source from the bucket you upload it to.** Cloud Functions first copies the zip to a bucket it creates itself, `gcf-v2-sources-<project number>-<region>`, and builds from there. That bucket and the `gcf-artifacts` repository do not exist before the first deploy, so the roles cannot be bound on them beforehand and are granted at project level. An IAM condition limits the storage role to buckets named `gcf-v2-sources-*`; without it the build identity could read every bucket in the project, including the database exports.
+- **IAM bindings take time to propagate.** Created in the same apply as the function, they are not effective yet when the build starts a few seconds later, and the build fails for lack of a permission that is already granted. A 120-second wait (`time_sleep`) sits between the bindings and the function.
+
 ### Secret Manager for Credentials
 WordPress database credentials (`db-name`, `db-user`, `db-password`, `db-host`, `db-instance-connection`) are stored as secrets and read by the MIG instances at startup via the startup script. The production VM service account has `roles/secretmanager.secretAccessor` on each secret individually (least privilege).
 

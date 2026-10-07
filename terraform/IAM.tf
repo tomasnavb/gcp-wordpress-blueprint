@@ -181,7 +181,26 @@ resource "google_project_iam_member" "cloudsql_backup_fn_role_binding" {
 # That build reads the source zip, pushes the image to Artifact Registry and writes build logs.
 # ------------------------------------------
 
+# Read the function source from the bucket Cloud Functions builds from.
+# Cloud Functions does not build from the scripts bucket: it first copies the zip to a bucket of its
+# own, gcf-v2-sources-<project number>-<region>, and the build reads it there. That bucket is created
+# on the first deploy, so the role cannot be bound on it beforehand and has to be project-level.
+# The condition keeps it from reaching any other bucket, in particular the database backups.
+resource "google_project_iam_member" "fn_build_gcf_sources_viewer" {
+  project = var.project_id
+  role    = "roles/storage.objectViewer"
+  member  = local.service_accounts.fn_build
+
+  condition {
+    title       = "gcf-v2-sources-buckets-only"
+    description = "Limits the role to the source buckets created by Cloud Functions"
+    expression  = "resource.name.startsWith(\"projects/_/buckets/gcf-v2-sources-\")"
+  }
+}
+
 # Read the function source zip from the scripts bucket.
+# Probably not needed: the build reads from the gcf-v2-sources bucket above. Kept until a deploy
+# without it confirms that.
 resource "google_storage_bucket_iam_member" "fn_build_source_viewer" {
   bucket = google_storage_bucket.scripts.name
   role   = "roles/storage.objectViewer"
@@ -201,6 +220,22 @@ resource "google_project_iam_member" "fn_build_log_writer" {
   project = var.project_id
   role    = "roles/logging.logWriter"
   member  = local.service_accounts.fn_build
+}
+
+# IAM bindings are not effective the moment they are created: they take time to propagate.
+# Without this wait the function build starts seconds after the bindings above and fails with
+# "does not have permission to write logs" or "access to bucket denied", although the roles are
+# already granted.
+# The function depends on this resource instead of on the bindings directly.
+resource "time_sleep" "fn_build_iam_propagation" {
+  create_duration = "120s"
+
+  depends_on = [
+    google_project_iam_member.fn_build_gcf_sources_viewer,
+    google_storage_bucket_iam_member.fn_build_source_viewer,
+    google_project_iam_member.fn_build_artifact_writer,
+    google_project_iam_member.fn_build_log_writer,
+  ]
 }
 
 # ------------------------------------------

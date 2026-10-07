@@ -1,11 +1,9 @@
 # Cloud Function to backup CloudSQL database to Cloud Storage
 resource "google_cloudfunctions2_function" "db_backup_fn" {
-  # The build SA bindings must exist before the first build starts
+  # The build SA bindings must exist and have propagated before the first build starts (see IAM.tf, 3.6)
   depends_on = [
     google_project_service.gcp_services,
-    google_storage_bucket_iam_member.fn_build_source_viewer,
-    google_project_iam_member.fn_build_artifact_writer,
-    google_project_iam_member.fn_build_log_writer,
+    time_sleep.fn_build_iam_propagation,
   ]
   name        = var.function_name
   location    = var.function_region
