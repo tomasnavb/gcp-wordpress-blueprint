@@ -17,7 +17,6 @@ variable "lb_use_reserved_ip" {
 }
 
 variable "domain_names" {
-  description = "Domains names to include into the Google Managed SSL certificates for the External LB"
+  description = "Domain names included in the Google-managed SSL certificate of the load balancer. Each needs a DNS A record pointing to the load balancer IP"
   type        = list(string)
-  default     = ["wordpress.tomasnavarro.dev"]
 }

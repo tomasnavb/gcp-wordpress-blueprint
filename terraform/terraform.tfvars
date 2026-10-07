@@ -80,6 +80,10 @@ max_scaled_in_replicas = 1
 # ==============================================================
 lb_use_reserved_ip = true
 
+# Domains served by the load balancer. The managed SSL certificate is issued for them
+# once their DNS A records point to the load balancer IP. Replace with your own.
+domain_names = ["wordpress.tomasnavarro.dev"]
+
 # ==============================================================
 # DATABASE
 # instance_tier reduced for portfolio cost (prod recommendation: db-custom-4-16384)
