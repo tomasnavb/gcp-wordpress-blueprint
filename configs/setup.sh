@@ -10,6 +10,7 @@ export REGION="europe-west1"
 export CB_SA="terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
 export REPO_NAME="your-repo-name"
 export REPO_OWNER="your-github-username-or-org"
+export IAP_USER_EMAIL="your-email-address"   # Google account granted SSH access through IAP
 
 # ==============================================================
 # Enable APIs required before Terraform runs
@@ -196,7 +197,7 @@ gcloud builds triggers create github \
   --repo-owner="${REPO_OWNER}" \
   --pull-request-pattern="^main$" \
   --build-config="cloudbuild/terraform-plan.yaml" \
-  --substitutions="_PROJECT_ID=${PROJECT_ID},_STATE_BUCKET=${STATE_BUCKET},_SAVE_PLAN=false" \
+  --substitutions="_PROJECT_ID=${PROJECT_ID},_STATE_BUCKET=${STATE_BUCKET},_IAP_USER_EMAIL=${IAP_USER_EMAIL},_SAVE_PLAN=false" \
   --service-account="projects/${PROJECT_ID}/serviceAccounts/${CB_SA}"
 
 # Main plan trigger — fires on push to main (a merged PR) when terraform/ files change.
@@ -210,7 +211,7 @@ gcloud builds triggers create github \
   --branch-pattern="^main$" \
   --included-files="terraform/**" \
   --build-config="cloudbuild/terraform-plan.yaml" \
-  --substitutions="_PROJECT_ID=${PROJECT_ID},_STATE_BUCKET=${STATE_BUCKET},_SAVE_PLAN=true" \
+  --substitutions="_PROJECT_ID=${PROJECT_ID},_STATE_BUCKET=${STATE_BUCKET},_IAP_USER_EMAIL=${IAP_USER_EMAIL},_SAVE_PLAN=true" \
   --service-account="projects/${PROJECT_ID}/serviceAccounts/${CB_SA}"
 
 # Apply trigger — triggered manually after reviewing the plan generated on main.

@@ -50,6 +50,7 @@ steps:
       - "-no-color"
     env:
       - "TF_VAR_project_id=$_PROJECT_ID"
+      - "TF_VAR_iap_user_email=$_IAP_USER_EMAIL"
 
   # Convert Terraform plan to text and JSON format for easier analysis and artifact storage
   - id: "plan-to-text"
@@ -94,6 +95,7 @@ steps:
 substitutions:
   _PROJECT_ID: "your-gcp-project-id"
   _STATE_BUCKET: "your-state-bucket-name"
+  _IAP_USER_EMAIL: "your-email-address"
   _SAVE_PLAN: "false"
 
 timeout: "1200s"

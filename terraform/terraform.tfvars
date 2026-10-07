@@ -1,11 +1,12 @@
 # ==============================================================
 # PROJECT
-# Set project_id via environment variable to avoid committing it:
+# project_id and iap_user_email are specific to whoever deploys and are not committed.
+# Cloud Build passes them from the trigger substitutions. For local runs:
 #   export TF_VAR_project_id="your-gcp-project-id"
+#   export TF_VAR_iap_user_email="you@example.com"
 # ==============================================================
 project_region = "europe-west1"
 project_zone   = "europe-west1-b"
-iap_user_email = "your-email-address"
 
 # ==============================================================
 # NETWORKING

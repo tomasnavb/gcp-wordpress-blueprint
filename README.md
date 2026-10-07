@@ -39,6 +39,8 @@ Production and management traffic are separated into two VPCs connected via VPC 
 ### IAP for SSH — No Public IPs, No Bastion
 SSH access is granted through IAP tunnel access (`roles/iap.tunnelResourceAccessor`) to a specific operator email. No VM has an external IP address. No bastion host is required.
 
+The operator email is not committed: it is passed to the pipeline as the `_IAP_USER_EMAIL` substitution and validated at plan time. In a production environment the binding would go to a Google group (`group:infra-admins@example.com`) instead of a user, so that team changes do not require a Terraform change.
+
 ### Immutable Infrastructure with Packer
 WordPress instances are deployed from a golden image built with Packer (`packer/wordpress.pkr.hcl`). The image includes WordPress, PHP, and all dependencies pre-installed. The MIG instance template references this image family — updates are rolled out by building a new image and triggering a rolling update.
 
@@ -97,7 +99,7 @@ gcp-wordpress-blueprint/
 │
 └── terraform/
     ├── main.tf                      # Providers, backend (GCS, bucket via -backend-config)
-    ├── terraform.tfvars             # Variable values (project_id set via TF_VAR_project_id)
+    ├── terraform.tfvars             # Variable values (project_id and iap_user_email are passed by the pipeline)
     ├── .terraform.lock.hcl          # Provider version lock (committed for CI/CD consistency)
     ├── APIs.tf                      # GCP API enablement
     ├── compute.tf                   # Management VM + MIG + LB modules
@@ -160,6 +162,7 @@ Edit the variables at the top of the file:
 export PROJECT_ID="your-gcp-project-id"
 export REPO_NAME="gcp-wordpress-blueprint"
 export REPO_OWNER="your-github-username-or-org"
+export IAP_USER_EMAIL="you@example.com"     # Google account granted SSH access through IAP
 ```
 
 #### Step 3: Connect the GitHub repository to Cloud Build
@@ -206,7 +209,7 @@ gcloud builds submit \
 gcloud builds submit \
   --project=$PROJECT_ID \
   --config=cloudbuild/terraform-plan.yaml \
-  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-wordpress-terraform-state,_SAVE_PLAN=true" \
+  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-wordpress-terraform-state,_IAP_USER_EMAIL=you@example.com,_SAVE_PLAN=true" \
   --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
@@ -286,6 +289,7 @@ cd terraform
 mkdir -p tmp
 terraform init -backend-config="bucket=${PROJECT_ID}-wordpress-terraform-state"
 export TF_VAR_project_id=$PROJECT_ID
+export TF_VAR_iap_user_email=you@example.com
 terraform destroy
 ```
 
@@ -364,7 +368,7 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 - Cloud SQL is accessible only via private IP within the VPC
 - SSH access exclusively through IAP (no open port 22 to the internet)
 - Database credentials stored in Secret Manager, never in environment variables or files
-- `project_id` excluded from version control — set via `TF_VAR_project_id`
+- `project_id` and the operator email excluded from version control — passed as Cloud Build substitutions (`TF_VAR_project_id`, `TF_VAR_iap_user_email`)
 - Cloud SQL instance has `deletion_protection` and `prevent_destroy` set to `false` for portfolio teardown convenience (set to `true` in production)
 - Least-privilege service accounts per workload (VM, function, scheduler)
 - Custom IAM role for the backup function with only the required Cloud SQL permissions
