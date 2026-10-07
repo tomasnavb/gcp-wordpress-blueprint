@@ -67,7 +67,9 @@ build {
     inline = [
       "/usr/sbin/apache2 -v",
       "php --version",
-      "systemctl is-enabled apache2"
+      "systemctl is-enabled apache2",
+      "php -l /var/www/html/wp-config.php",
+      "grep -q HTTP_X_FORWARDED_PROTO /var/www/html/wp-config.php"
     ]
   }
 }
