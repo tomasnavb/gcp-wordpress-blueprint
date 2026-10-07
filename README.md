@@ -104,7 +104,7 @@ gcp-wordpress-blueprint/
     ├── database.tf                  # Cloud SQL instance, database, user
     ├── functions.tf                 # Cloud Function v2 + Cloud Scheduler modules
     ├── IAM.tf                       # Service accounts, roles, bindings
-    ├── locals.tf                    # Shared locals (names, roles, secrets map)
+    ├── locals.tf                    # Shared locals (names, service account members, secrets map)
     ├── networking.tf                # VPC modules + VPC Peering
     ├── outputs.tf
     ├── private_service_access.tf    # Private Service Access for Cloud SQL
