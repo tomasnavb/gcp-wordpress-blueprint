@@ -117,6 +117,13 @@ resource "google_project_iam_member" "mgmt_iap_tunnel_access" {
   member  = local.service_accounts.mgmt
 }
 
+# Write logs to Cloud Logging (startup script output, guest agent).
+resource "google_project_iam_member" "mgmt_vm_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = local.service_accounts.mgmt
+}
+
 # Act as the production VM SA. OS Login requires this to SSH into an instance
 # that runs as that service account. Scoped to that one SA, not the project.
 resource "google_service_account_iam_member" "mgmt_ssh_to_prod" {
