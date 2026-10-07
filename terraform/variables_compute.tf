@@ -10,13 +10,7 @@ variable "vm_mgmt_machine_type" {
 }
 
 
-# External Proxy Load Balancer
-variable "lb_dedicated_ip_cidr" {
-  description = "IP CIDR range for the external load balancer proxy subnet"
-  type        = string
-  default     = "10.0.1.0/24"
-}
-
+# External Application Load Balancer
 variable "domain_names" {
   description = "Domains names to include into the Google Managed SSL certificates for the External LB"
   type        = list(string)
