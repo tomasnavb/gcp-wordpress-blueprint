@@ -5,6 +5,7 @@ locals {
     prod         = "serviceAccount:${google_service_account.prod_vm.email}"
     sql_instance = "serviceAccount:${google_sql_database_instance.main.service_account_email_address}"
     fn           = "serviceAccount:${google_service_account.cloudsql_backup_fn.email}"
+    fn_build     = "serviceAccount:${google_service_account.cloudsql_backup_fn_build.email}"
     scheduler    = "serviceAccount:${google_service_account.scheduler_fn_invoker.email}"
   }
 

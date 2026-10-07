@@ -9,7 +9,8 @@
 #        3.3 Production VMs (MIG)
 #        3.4 Cloud SQL instance
 #        3.5 Backup function — runtime
-#        3.6 Cloud Scheduler
+#        3.6 Backup function — build
+#        3.7 Cloud Scheduler
 #
 # The "serviceAccount:<email>" member strings are defined in locals.tf (local.service_accounts).
 
@@ -33,6 +34,13 @@ resource "google_service_account" "prod_vm" {
 resource "google_service_account" "cloudsql_backup_fn" {
   account_id   = "cloudsql-backup-fn-sa"
   display_name = "Service Account for the CloudSQL backup Cloud Function"
+}
+
+# Build identity of the backup Cloud Function: what Cloud Build runs as when it builds
+# the function's container image. Replaces the Compute Engine default SA.
+resource "google_service_account" "cloudsql_backup_fn_build" {
+  account_id   = "cloudsql-backup-fn-build-sa"
+  display_name = "Service Account for building the CloudSQL backup Cloud Function"
 }
 
 # Identity Cloud Scheduler uses to call the backup Cloud Function.
@@ -159,15 +167,37 @@ resource "google_project_iam_member" "cloudsql_backup_fn_role_binding" {
   member  = local.service_accounts.fn
 }
 
-# Read objects in the scripts bucket.
-resource "google_storage_bucket_iam_member" "db_backup_fn_binding" {
+# ------------------------------------------
+# 3.6 Backup function — build
+#
+# Deploying a Cloud Function v2 starts a separate Cloud Build that builds the container image.
+# That build reads the source zip, pushes the image to Artifact Registry and writes build logs.
+# ------------------------------------------
+
+# Read the function source zip from the scripts bucket.
+resource "google_storage_bucket_iam_member" "fn_build_source_viewer" {
   bucket = google_storage_bucket.scripts.name
   role   = "roles/storage.objectViewer"
-  member = local.service_accounts.fn
+  member = local.service_accounts.fn_build
+}
+
+# Push and pull images in Artifact Registry. Project-level because the gcf-artifacts repository
+# is created by Cloud Functions on the first deploy and does not exist before it.
+resource "google_project_iam_member" "fn_build_artifact_writer" {
+  project = var.project_id
+  role    = "roles/artifactregistry.writer"
+  member  = local.service_accounts.fn_build
+}
+
+# Write build logs to Cloud Logging.
+resource "google_project_iam_member" "fn_build_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = local.service_accounts.fn_build
 }
 
 # ------------------------------------------
-# 3.6 Cloud Scheduler
+# 3.7 Cloud Scheduler
 # ------------------------------------------
 
 # Invoke the backup function. Cloud Functions v2 runs on Cloud Run, so roles/run.invoker
