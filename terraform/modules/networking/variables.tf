@@ -62,23 +62,3 @@ variable "iap_target_tags" {
   description = "Network tags that the IAP SSH firewall rule applies to"
   type        = list(string)
 }
-
-variable "allow_external_lb" {
-  description = "Whether to create firewall rules for external LB health checks and proxy traffic"
-  type        = bool
-}
-
-variable "lb_fw_rule_priority" {
-  description = "Priority for the load balancer firewall rules"
-  type        = number
-}
-
-variable "backend_target_tags" {
-  description = "Network tags that the LB firewall rules apply to (must match instance template tags)"
-  type        = list(string)
-}
-
-variable "lb_subnets_ranges" {
-  description = "Source IP CIDR ranges for the LB proxy subnet firewall rule (the proxy-only subnet CIDR)"
-  type        = list(string)
-}

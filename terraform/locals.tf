@@ -1,36 +1,11 @@
 locals {
-  # Roles
-  roles = {
-    iap_tunnel_accessor     = "roles/iap.tunnelResourceAccessor"
-    cloudsql_editor         = "roles/cloudsql.editor"
-    bucket_admin            = "roles/storage.admin"
-    secret_manager_accessor = "roles/secretmanager.secretAccessor"
-    fn_invoker              = "roles/run.invoker"
-    compute_viewer          = "roles/compute.viewer"
-    log_writer              = "roles/logging.logWriter"
-    os_admin_login          = "roles/compute.osAdminLogin"
-    custom_db_backup_role = {
-      id          = "dbBackupRole"
-      title       = "Database Backup Role"
-      description = "Custom role for Cloud Function to backup CloudSQL database to Cloud Storage"
-      permissions = [
-        "cloudsql.instances.get",
-        "cloudsql.instances.list",
-        "cloudsql.instances.export",
-        "cloudsql.backupRuns.create",
-        "cloudsql.backupRuns.export",
-        "cloudsql.backupRuns.list",
-        "cloudsql.backupRuns.get"
-      ]
-    }
-  }
-
   # Service accounts
   service_accounts = {
     mgmt         = "serviceAccount:${google_service_account.mgmt_vm.email}"
     prod         = "serviceAccount:${google_service_account.prod_vm.email}"
     sql_instance = "serviceAccount:${google_sql_database_instance.main.service_account_email_address}"
     fn           = "serviceAccount:${google_service_account.cloudsql_backup_fn.email}"
+    fn_build     = "serviceAccount:${google_service_account.cloudsql_backup_fn_build.email}"
     scheduler    = "serviceAccount:${google_service_account.scheduler_fn_invoker.email}"
   }
 

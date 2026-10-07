@@ -33,6 +33,14 @@ source "googlecompute" "wordpress" {
   communicator            = "ssh"
   ssh_username            = "packer"
   temporary_key_pair_type = "ed25519"
+
+  # With use_iap the VM has no external IP and SSH goes through an IAP tunnel (requires gcloud
+  # on the machine running Packer). The tag matches the IAP SSH firewall rule of the VPC.
+  # Without it, Packer connects straight to the VM's external IP.
+  use_iap          = var.use_iap
+  omit_external_ip = var.use_iap
+  use_internal_ip  = var.use_iap
+  tags             = var.use_iap ? ["iap-ssh-access"] : []
 }
 
 # Build steps executed inside the temporary VM
@@ -59,7 +67,11 @@ build {
     inline = [
       "/usr/sbin/apache2 -v",
       "php --version",
-      "systemctl is-enabled apache2"
+      "systemctl is-enabled apache2",
+      "php -l /var/www/html/wp-config.php",
+      "grep -q HTTP_X_FORWARDED_PROTO /var/www/html/wp-config.php",
+      "php -l /var/www/html/health.php",
+      "if curl -sf -o /dev/null http://localhost/health.php; then echo 'health.php must not report healthy in the image'; exit 1; fi"
     ]
   }
 }

@@ -20,3 +20,9 @@ variable "subnetwork" {
   description = "Subnet for the temporary Packer build VM"
   default     = ""
 }
+
+variable "use_iap" {
+  type        = bool
+  description = "Connect to the build VM through an IAP tunnel, with no external IP. Set to false only for the first build, which runs in the default network before the management VPC exists"
+  default     = true
+}

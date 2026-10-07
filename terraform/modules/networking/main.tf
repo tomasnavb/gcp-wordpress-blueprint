@@ -1,9 +1,7 @@
 locals {
-  iap_fw_rule_name       = "${var.vpc_name}-allow-iap-ssh"
-  lb_hc_fw_rule_name     = "${var.vpc_name}-allow-lb-health-checks"
-  lb_subnet_fw_rule_name = "${var.vpc_name}-allow-lb-proxy"
-  router_name            = "${var.vpc_name}-router"
-  nat_name               = "${var.vpc_name}-nat"
+  iap_fw_rule_name = "${var.vpc_name}-allow-iap-ssh"
+  router_name      = "${var.vpc_name}-router"
+  nat_name         = "${var.vpc_name}-nat"
 }
 
 resource "google_compute_network" "this" {
@@ -32,38 +30,6 @@ resource "google_compute_firewall" "allow_ssh_from_iap" {
 
   source_ranges = ["35.235.240.0/20"]
   target_tags   = var.iap_target_tags
-}
-
-resource "google_compute_firewall" "allow_lb_health_checks" {
-  count     = var.allow_external_lb ? 1 : 0
-  name      = local.lb_hc_fw_rule_name
-  network   = google_compute_network.this.self_link
-  priority  = var.lb_fw_rule_priority
-  direction = "INGRESS"
-
-  allow {
-    protocol = "tcp"
-    ports    = [80]
-  }
-
-  source_ranges = ["35.191.0.0/16", "130.211.0.0/22"]
-  target_tags   = var.backend_target_tags
-}
-
-resource "google_compute_firewall" "allow_lb_subnet" {
-  count     = var.allow_external_lb ? 1 : 0
-  name      = local.lb_subnet_fw_rule_name
-  network   = google_compute_network.this.self_link
-  priority  = var.lb_fw_rule_priority
-  direction = "INGRESS"
-
-  allow {
-    protocol = "tcp"
-    ports    = [80]
-  }
-
-  source_ranges = var.lb_subnets_ranges
-  target_tags   = var.backend_target_tags
 }
 
 resource "google_compute_router" "this" {

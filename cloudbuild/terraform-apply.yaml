@@ -41,6 +41,28 @@ steps:
         gcloud storage cp gs://$_STATE_BUCKET/plans/$_PLAN_BUILD_ID/db_backup.zip tmp/db_backup.zip
         echo "Plan artifacts downloaded from gs://$_STATE_BUCKET/plans/$_PLAN_BUILD_ID/"
 
+  # Convert the downloaded plan to JSON so the destructive change check reads exactly what will be applied.
+  - id: "plan-to-json"
+    name: "hashicorp/terraform:1.15.7"
+    dir: "terraform"
+    entrypoint: "sh"
+    args:
+      - "-c"
+      - |
+        terraform show -json tfplan > plan.json
+
+  # Block the apply if the plan destroys or replaces resources and _ALLOW_DESTRUCTIVE is not "true".
+  # Protected resources (database, backup bucket) are blocked regardless of the flag.
+  # See scripts/check_destructive.py for details.
+  - id: "enforce-destructive-changes"
+    name: "python:3.12-alpine"
+    entrypoint: "python"
+    args:
+      - "/workspace/cloudbuild/scripts/check_destructive.py"
+    env:
+      - "CHECK_MODE=enforce"
+      - "ALLOW_DESTRUCTIVE=$_ALLOW_DESTRUCTIVE"
+
   # Apply the previously generated plan.
   - id: "terraform-apply"
     name: "hashicorp/terraform:1.15.7"
@@ -65,6 +87,7 @@ substitutions:
   _PROJECT_ID: "your-gcp-project-id"
   _STATE_BUCKET: "your-state-bucket-name"
   _PLAN_BUILD_ID: "approved-plan-build-id"
+  _ALLOW_DESTRUCTIVE: "false"
 
 timeout: "1200s"
 

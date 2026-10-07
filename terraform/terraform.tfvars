@@ -1,11 +1,12 @@
 # ==============================================================
 # PROJECT
-# Set project_id via environment variable to avoid committing it:
+# project_id and iap_user_email are specific to whoever deploys and are not committed.
+# Cloud Build passes them from the trigger substitutions. For local runs:
 #   export TF_VAR_project_id="your-gcp-project-id"
+#   export TF_VAR_iap_user_email="you@example.com"
 # ==============================================================
 project_region = "europe-west1"
 project_zone   = "europe-west1-b"
-iap_user_email = "your-email-address"
 
 # ==============================================================
 # NETWORKING
@@ -66,6 +67,22 @@ cooldown_period        = 60
 lb_utilization_target  = 0.8
 time_window_sec        = 300
 max_scaled_in_replicas = 1
+
+# ==============================================================
+# LOAD BALANCER
+# lb_use_reserved_ip must match RESERVE_LB_IP in configs/setup.sh:
+#   true  — the IP is reserved once by setup.sh and survives terraform destroy,
+#           so the DNS record does not change between deploys (production behaviour).
+#           A reserved IP is billed while no load balancer uses it; release it with
+#           `gcloud compute addresses delete wordpress-prod-lb-ip-global-external-lb --global`.
+#   false — Terraform creates and destroys the IP with the load balancer.
+#           No idle cost, but every deploy gets a new IP and the DNS record must be updated.
+# ==============================================================
+lb_use_reserved_ip = true
+
+# Domains served by the load balancer. The managed SSL certificate is issued for them
+# once their DNS A records point to the load balancer IP. Replace with your own.
+domain_names = ["wordpress.tomasnavarro.dev"]
 
 # ==============================================================
 # DATABASE

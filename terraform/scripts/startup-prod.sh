@@ -1,8 +1,14 @@
 #!/bin/bash
 # Executed on every VM boot via instance metadata
 # Fetches WordPress DB credentials from Secret Manager and injects them into wp-config.php
+#
+# The last step creates /run/wordpress-configured. health.php answers 200 only when that file
+# exists, so an instance where this script failed gets no traffic and is replaced by auto-healing.
 
 set -e
+
+READY_MARKER="/run/wordpress-configured"
+rm -f "$READY_MARKER"
 
 PROJECT_ID=$(curl -s "http://metadata.google.internal/computeMetadata/v1/project/project-id" -H "Metadata-Flavor: Google")
 
@@ -53,4 +59,5 @@ PYEOF
 echo ">>> Restarting Apache..."
 systemctl restart apache2
 
+touch "$READY_MARKER"
 echo ">>> Startup complete"

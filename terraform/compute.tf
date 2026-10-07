@@ -27,15 +27,35 @@ resource "google_compute_instance" "management" {
   }
 }
 
+# Latest image of the wordpress-golden family, resolved to a concrete image on every plan.
+# The family URL alone never changes, so Terraform would not notice a new Packer build.
+# With the concrete image, a new build shows up as an instance template replacement and
+# the MIG rolls it out. The plan fails here if no image has been built yet.
+data "google_compute_image" "wordpress_golden" {
+  family  = "wordpress-golden"
+  project = var.project_id
+}
+
 module "wordpress_regional_mig" {
   source = "./modules/mig"
+
+  # Instances must not boot before what their startup script needs is ready: the secrets with
+  # their values (the database host only exists once Cloud SQL is created), the bindings that
+  # let them read those secrets, already propagated, and the database and user WordPress connects to.
+  # Without this the first instances boot minutes too early and fail to configure themselves.
+  depends_on = [
+    google_secret_manager_secret_version.wordpress_secrets,
+    time_sleep.prod_vm_iam_propagation,
+    google_sql_database.wordpress_db,
+    google_sql_user.wordpress_app_user,
+  ]
 
   region = var.subnet_prod_region
 
   # Instance template
   template_name_prefix  = var.instance_template_name_prefix
   machine_type          = var.machine_type
-  source_image          = local.source_image
+  source_image          = data.google_compute_image.wordpress_golden.self_link
   disk_size_gb          = local.disk_size_gb
   disk_type             = local.disk_type
   network               = module.vpc_prod.vpc_self_link
@@ -77,30 +97,40 @@ module "wordpress_regional_mig" {
   max_scaled_in_replicas = var.max_scaled_in_replicas
 }
 
-module "external_lb" {
-  source = "./modules/external_lb"
+module "global_external_lb" {
+  source = "./modules/global_external_lb"
 
-  # Required network references
-  region                = var.subnet_prod_region
-  vpc_id                = module.vpc_prod.vpc_id
-  dedicated_subnet_cidr = var.lb_dedicated_ip_cidr
-  mig_instance_group    = module.wordpress_regional_mig.instance_group
+  # Firewall rule that lets the Google front ends reach the backends (health checks and proxied traffic).
+  # Only the backend tag: the template also carries "iap-ssh-access", which is unrelated to the LB.
+  project_id          = var.project_id
+  network_self_link   = module.vpc_prod.vpc_self_link
+  backend_target_tags = ["backend-service"]
 
-  # Resource names (module appends "-external-lb" suffix to subnet, IP, url_map, health_check)
-  subnet_name          = "wordpress-prod-lb-proxy"
+  # Backend: the MIG and the named port it serves on
+  mig_instance_group = module.wordpress_regional_mig.instance_group
+  backend_port_name  = var.port_name
+  backend_port       = var.port
+
+  # Resource names (module appends "-global-external-lb" suffix to IP, url_map, health_check;
+  # every other resource is named after lb_name)
   ip_address_name      = "wordpress-prod-lb-ip"
+  use_reserved_ip      = var.lb_use_reserved_ip
   lb_name              = "wordpress-prod-lb"
   url_map_name         = "wordpress-prod-lb-url-map"
   health_check_name    = "wordpress-prod-lb-hc"
   backend_service_name = "wordpress-prod-lb-backend-service"
 
+  # HTTPS: Google-managed certificate and minimum TLS version
+  domain_names       = var.domain_names
+  ssl_policy_profile = "MODERN"
+  min_tls_version    = "TLS_1_2"
+
   # LB configuration
-  subnet_role              = "ACTIVE"
-  listener_port            = 80
-  http_health_check_port   = 80
-  backend_service_protocol = "HTTP"
-  load_balancing_scheme    = "EXTERNAL_MANAGED"
-  balancing_mode           = "RATE"
-  max_rate_per_instance    = 100
-  capacity_scaler          = 1.0
+  http_health_check_port    = var.health_check_port
+  health_check_request_path = var.request_path
+  backend_service_protocol  = "HTTP"
+  load_balancing_scheme     = "EXTERNAL_MANAGED"
+  balancing_mode            = "RATE"
+  max_rate_per_instance     = 100
+  capacity_scaler           = 1.0
 }
