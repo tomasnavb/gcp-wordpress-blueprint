@@ -23,3 +23,9 @@ packer_cache/
 
 # Editor
 .vscode/
+
+# Claude Code
+CLAUDE.md
+
+# Personal notes
+docs/notes.txt
