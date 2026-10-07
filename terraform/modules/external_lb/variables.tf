@@ -1,15 +1,15 @@
 variable "project_id" {
-  description = "Project ID used to allow Load Balancer Firewall Rules"
+  description = "Project ID where the load balancer firewall rule is created"
   type        = string
 }
 
 variable "network_self_link" {
-  description = "Network Self Link to allow Load balancer Firewall Rules"
+  description = "Self-link of the VPC network of the backends, where the firewall rule is created"
   type        = string
 }
 
-variable "target_tags" {
-  description = "Target tags referencing the backend Compute Instances"
+variable "backend_target_tags" {
+  description = "Network tags of the backend instances the firewall rule applies to (must be present in the instance template tags)"
   type        = list(string)
 }
 
@@ -19,13 +19,23 @@ variable "ip_address_name" {
 }
 
 variable "lb_name" {
-  description = "Name for the regional HTTP proxy (also used as base for the forwarding rule name)"
+  description = "Base name of the load balancer. Proxies, forwarding rules, the redirect URL map, the certificate, the SSL policy and the firewall rule are named after it"
   type        = string
 }
 
 variable "domain_names" {
-  description = "Domains to include into the Google Managed SSL ceritificates"
+  description = "Domains included in the Google-managed SSL certificate"
   type        = list(string)
+}
+
+variable "ssl_policy_profile" {
+  description = "Cipher profile of the SSL policy (COMPATIBLE, MODERN or RESTRICTED)"
+  type        = string
+}
+
+variable "min_tls_version" {
+  description = "Minimum TLS version accepted from clients (TLS_1_0, TLS_1_1 or TLS_1_2)"
+  type        = string
 }
 
 variable "url_map_name" {
@@ -34,17 +44,22 @@ variable "url_map_name" {
 }
 
 variable "health_check_name" {
-  description = "Base name for the regional health check resource (module appends '-external-lb')"
+  description = "Base name for the health check resource (module appends '-external-lb')"
   type        = string
 }
 
 variable "http_health_check_port" {
-  description = "TCP port the regional health check probes on the backend instances"
+  description = "TCP port the health check probes on the backend instances"
   type        = number
 }
 
+variable "health_check_request_path" {
+  description = "HTTP path the health check requests on the backend instances"
+  type        = string
+}
+
 variable "backend_service_name" {
-  description = "Name for the regional backend service resource"
+  description = "Name for the backend service resource"
   type        = string
 }
 
@@ -53,8 +68,18 @@ variable "backend_service_protocol" {
   type        = string
 }
 
+variable "backend_port_name" {
+  description = "Named port of the instance group the backend service sends traffic to"
+  type        = string
+}
+
+variable "backend_port" {
+  description = "TCP port behind the named port, opened in the firewall rule for traffic from the load balancer"
+  type        = number
+}
+
 variable "load_balancing_scheme" {
-  description = "Load balancing scheme applied to both the forwarding rule and backend service (EXTERNAL_MANAGED)"
+  description = "Load balancing scheme applied to both forwarding rules and the backend service (EXTERNAL_MANAGED)"
   type        = string
 }
 

@@ -89,27 +89,36 @@ module "wordpress_regional_mig" {
 module "external_lb" {
   source = "./modules/external_lb"
 
-  # LB Firewall Health Checks
-  project_id        = var.project_id
-  target_tags       = var.instance_template_tags
-  network_self_link = module.vpc_prod.vpc_self_link
+  # Firewall rule that lets the Google front ends reach the backends (health checks and proxied traffic).
+  # Only the backend tag: the template also carries "iap-ssh-access", which is unrelated to the LB.
+  project_id          = var.project_id
+  network_self_link   = module.vpc_prod.vpc_self_link
+  backend_target_tags = ["backend-service"]
 
-  # Required network references
+  # Backend: the MIG and the named port it serves on
   mig_instance_group = module.wordpress_regional_mig.instance_group
+  backend_port_name  = var.port_name
+  backend_port       = var.port
 
-  # Resource names (module appends "-external-lb" suffix to subnet, IP, url_map, health_check)
+  # Resource names (module appends "-external-lb" suffix to IP, url_map, health_check;
+  # every other resource is named after lb_name)
   ip_address_name      = "wordpress-prod-lb-ip"
   lb_name              = "wordpress-prod-lb"
   url_map_name         = "wordpress-prod-lb-url-map"
   health_check_name    = "wordpress-prod-lb-hc"
   backend_service_name = "wordpress-prod-lb-backend-service"
-  domain_names         = var.domain_names
+
+  # HTTPS: Google-managed certificate and minimum TLS version
+  domain_names       = var.domain_names
+  ssl_policy_profile = "MODERN"
+  min_tls_version    = "TLS_1_2"
 
   # LB configuration
-  http_health_check_port   = 80
-  backend_service_protocol = "HTTP"
-  load_balancing_scheme    = "EXTERNAL_MANAGED"
-  balancing_mode           = "RATE"
-  max_rate_per_instance    = 100
-  capacity_scaler          = 1.0
+  http_health_check_port    = var.health_check_port
+  health_check_request_path = var.request_path
+  backend_service_protocol  = "HTTP"
+  load_balancing_scheme     = "EXTERNAL_MANAGED"
+  balancing_mode            = "RATE"
+  max_rate_per_instance     = 100
+  capacity_scaler           = 1.0
 }
