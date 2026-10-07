@@ -148,7 +148,7 @@ gcp-wordpress-blueprint/
 
 ## Prerequisites
 
-- A GCP project with billing enabled
+- A Google Cloud account with a billing account. The project itself is created in [Step 1](#step-1-create-the-gcp-project-and-enable-billing)
 - A GitHub account with this repository forked or cloned
 - A domain name whose DNS records you control (the managed certificate is issued for it)
 - [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for local operations)
@@ -164,7 +164,32 @@ The deployment is split into two phases: a one-time **bootstrap** that sets up C
 
 ### Phase 1 — Bootstrap (one-time)
 
-#### Step 1: Clone the repository in Cloud Shell
+#### Step 1: Create the GCP project and enable billing
+
+Everything below runs in [Cloud Shell](https://shell.cloud.google.com). The deployment needs its own project with a billing account linked: Compute Engine, Cloud SQL and Cloud Build cannot be enabled without one.
+
+```bash
+export PROJECT_ID="your-gcp-project-id"      # globally unique, 6 to 30 characters
+
+gcloud projects create $PROJECT_ID --name="WordPress on GCP"
+gcloud config set project $PROJECT_ID
+
+# Link a billing account
+gcloud billing accounts list
+gcloud billing projects link $PROJECT_ID --billing-account=BILLING_ACCOUNT_ID
+```
+
+Both can also be done in the console: *IAM & Admin → Create a Project*, then *Billing → Link a billing account*. To use an existing project, export `PROJECT_ID` and skip the rest of this step.
+
+Confirm billing is active before continuing:
+
+```bash
+gcloud billing projects describe $PROJECT_ID --format="value(billingEnabled)"   # must print True
+```
+
+> **Cost:** the environment is billed while it is up, mainly the regional Cloud SQL instance. See [Destroy](#destroy) to tear it down.
+
+#### Step 2: Clone the repository in Cloud Shell
 
 ```bash
 gh auth login
@@ -172,19 +197,18 @@ gh repo clone YOUR_GITHUB_USERNAME/gcp-wordpress-blueprint
 cd gcp-wordpress-blueprint
 ```
 
-#### Step 2: Set the deployment variables
+#### Step 3: Set the deployment variables
 
-Export them in the shell. `configs/setup.sh` reads them, and the commands of the next steps use them too, so no file is edited with your own values:
+`PROJECT_ID` is already exported from Step 1. Export the rest in the same shell. `configs/setup.sh` reads them, and the commands of the next steps use them too, so no file is edited with your own values:
 
 ```bash
-export PROJECT_ID="your-gcp-project-id"
 export REPO_NAME="gcp-wordpress-blueprint"
 export REPO_OWNER="your-github-username-or-org"
 export IAP_USER_EMAIL="you@example.com"     # Google account granted SSH access through IAP
 export RESERVE_LB_IP="true"                 # reserve a static IP for the load balancer (see below)
 ```
 
-The script stops with an error if any of the first four is missing.
+The script stops with an error if `PROJECT_ID` or any of the first three is missing.
 
 Set your domain in `terraform/terraform.tfvars`:
 
@@ -193,7 +217,7 @@ domain_names       = ["wordpress.example.com"]
 lb_use_reserved_ip = true   # must match RESERVE_LB_IP
 ```
 
-#### Step 3: Connect the GitHub repository to Cloud Build
+#### Step 4: Connect the GitHub repository to Cloud Build
 
 This step requires OAuth authorization and **cannot** be done via `gcloud`. Do it manually:
 
@@ -201,7 +225,7 @@ This step requires OAuth authorization and **cannot** be done via `gcloud`. Do i
 
 Once the repository is listed as connected, proceed to the next step.
 
-#### Step 4: Run the bootstrap script
+#### Step 5: Run the bootstrap script
 
 ```bash
 chmod +x configs/setup.sh
@@ -220,7 +244,7 @@ The script prints the reserved IP. **Create a DNS A record for your domain point
 
 ### Phase 2 — First deploy
 
-#### Step 5: Build the golden image (Packer)
+#### Step 6: Build the golden image (Packer)
 
 Manually submit the Packer build (Cloud Build trigger fires automatically on future pushes to `packer/**`):
 
@@ -236,7 +260,7 @@ gcloud builds submit \
 >
 > Every later build runs from the `packer-build` trigger with `_USE_IAP=true`: the build VM is created in `wordpress-mgmt-vpc` with no external IP and Packer connects through an IAP tunnel.
 
-#### Step 6: Generate the Terraform plan
+#### Step 7: Generate the Terraform plan
 
 ```bash
 gcloud builds submit \
@@ -251,9 +275,9 @@ gcloud builds submit \
 > The plan is saved to `gs://PROJECT_ID-wordpress-terraform-state/plans/BUILD_ID/`.
 > Review `plan.txt` before applying.
 
-#### Step 7: Apply the plan
+#### Step 8: Apply the plan
 
-Replace `PLAN_BUILD_ID` with the ID from Step 6:
+Replace `PLAN_BUILD_ID` with the ID from Step 7:
 
 ```bash
 gcloud builds submit \
