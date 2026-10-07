@@ -86,8 +86,8 @@ module "wordpress_regional_mig" {
   max_scaled_in_replicas = var.max_scaled_in_replicas
 }
 
-module "external_lb" {
-  source = "./modules/external_lb"
+module "global_external_lb" {
+  source = "./modules/global_external_lb"
 
   # Firewall rule that lets the Google front ends reach the backends (health checks and proxied traffic).
   # Only the backend tag: the template also carries "iap-ssh-access", which is unrelated to the LB.
@@ -100,7 +100,7 @@ module "external_lb" {
   backend_port_name  = var.port_name
   backend_port       = var.port
 
-  # Resource names (module appends "-external-lb" suffix to IP, url_map, health_check;
+  # Resource names (module appends "-global-external-lb" suffix to IP, url_map, health_check;
   # every other resource is named after lb_name)
   ip_address_name      = "wordpress-prod-lb-ip"
   lb_name              = "wordpress-prod-lb"

@@ -1,5 +1,5 @@
 locals {
-  lb_suffix   = "-external-lb"
+  lb_suffix   = "-global-external-lb"
   ip_protocol = "TCP"
 
   # The certificate name changes with the domain list. Together with create_before_destroy,

@@ -124,7 +124,7 @@ gcp-wordpress-blueprint/
     │       └── requirements.txt
     └── modules/
         ├── cloud_scheduler/         # Cloud Scheduler job with OIDC auth and retry policy
-        ├── external_lb/             # Proxy-only subnet, forwarding rule, URL map, backend service
+        ├── global_external_lb/      # Global IP, managed certificate, HTTPS and HTTP forwarding rules, backend service, firewall
         ├── mig/                     # Instance template, Regional MIG, autoscaler, health check
         └── networking/              # VPC, subnet, IAP/LB firewall rules, Cloud Router, Cloud NAT
 ```
@@ -370,7 +370,7 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 |---|---|
 | `modules/networking` | VPC network, subnet, IAP/LB firewall rules, Cloud Router, Cloud NAT. All feature flags (`enable_nat`, `allow_external_lb`, `allow_ssh_from_iap`) are passed by the caller with no module-level defaults. |
 | `modules/mig` | Instance template (Packer golden image), Regional MIG with distribution policy, global health check for auto-healing, and regional autoscaler with scale-in controls. |
-| `modules/external_lb` | Proxy-only subnet, reserved external IP, forwarding rule, URL map, HTTP proxy, regional health check, and backend service wired to the MIG. |
+| `modules/global_external_lb` | Global external Application Load Balancer: IP address (created or reserved beforehand), Google-managed SSL certificate, SSL policy, HTTPS forwarding rule, HTTP forwarding rule that redirects to HTTPS, backend service wired to the MIG, health check, and the firewall rule that lets the Google front ends reach the backends. |
 | `modules/cloud_scheduler` | Cloud Scheduler job with OIDC-authenticated HTTP target, configurable retry policy, and cron schedule. Reused for both export and snapshot backup jobs. |
 
 ---

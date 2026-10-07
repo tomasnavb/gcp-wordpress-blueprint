@@ -14,7 +14,7 @@ variable "backend_target_tags" {
 }
 
 variable "ip_address_name" {
-  description = "Base name for the reserved external IP address resource (module appends '-external-lb')"
+  description = "Base name for the reserved external IP address resource (module appends '-global-external-lb')"
   type        = string
 }
 
@@ -39,12 +39,12 @@ variable "min_tls_version" {
 }
 
 variable "url_map_name" {
-  description = "Base name for the URL map resource (module appends '-external-lb')"
+  description = "Base name for the URL map resource (module appends '-global-external-lb')"
   type        = string
 }
 
 variable "health_check_name" {
-  description = "Base name for the health check resource (module appends '-external-lb')"
+  description = "Base name for the health check resource (module appends '-global-external-lb')"
   type        = string
 }
 
