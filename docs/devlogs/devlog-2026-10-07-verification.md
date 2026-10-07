@@ -35,16 +35,16 @@ The README commands upload the local checkout, so nothing has to be merged yet. 
 | A6 | Packer build, step `install-packer`: download, checksum `OK`, `packer version` prints 1.16.1 | 6 | `done` |
 | A7 | Packer build with `_USE_IAP=false` in the `default` network produces an image in the `wordpress-golden` family | 6 | `done` |
 | A8 | Packer verification step: `php -l` reports no syntax errors in `wp-config.php` and the proxy block is found | 8 | `done` |
-| A9 | Plan build: the email validation passes and both data sources resolve (golden image, reserved IP) | 5, 6, LB | `pending` |
+| A9 | Plan build: the email validation passes and both data sources resolve (golden image, reserved IP) | 5, 6, LB | `done` |
 | A10 | Plan build: step `report-destructive-changes` prints "No destructive changes detected" and the artifacts are uploaded | 4 | `pending` |
 | A11 | Apply build: step `enforce-destructive-changes` passes | 4 | `pending` |
-| A12 | Apply build: the Cloud Function builds. The Compute Engine default SA has no role granted by hand | 2 | `failed` |
+| A12 | Apply build: the Cloud Function builds. The Compute Engine default SA has no role granted by hand | 2 | `done` |
 | A13 | Apply build: the last step prints `load_balancer_ip`, `site_urls` and `ssl_certificate_name` | 7 | `pending` |
 | A14 | Both scheduler jobs run successfully (`export-db-backup`, `snapshot-db-backup`) | 2 | `pending` |
 | A15 | Management VM: startup script output appears in Cloud Logging | 3 | `pending` |
-| A16 | Production VM: no `logging.logEntries.create` denial in its logs | 3 | `pending` |
-| A17 | Certificate status is `ACTIVE` | LB | `pending` |
-| A18 | `https://DOMAIN` loads WordPress with its styles | 8 | `pending` |
+| A16 | Production VM: no `logging.logEntries.create` denial in its logs | 3 | `failed` |
+| A17 | Certificate status is `ACTIVE` | LB | `done` |
+| A18 | `https://DOMAIN` loads WordPress with its styles | 8 | `failed` |
 | A19 | `https://DOMAIN/wp-admin` opens the login page without a redirect loop | 8 | `pending` |
 | A20 | `curl -I http://DOMAIN` answers `301` with a `Location: https://...` header | LB | `pending` |
 | A21 | `curl --tlsv1.1 --tls-max 1.1 https://DOMAIN` is rejected | LB | `pending` |
@@ -168,3 +168,48 @@ The role did not show in `gcloud projects get-iam-policy` because a bucket-level
 **Risk.** IAM conditions on Cloud Storage only apply to buckets with uniform bucket-level access. If the bucket created by Cloud Functions does not have it, the conditional binding is ignored and the error repeats. Fallback: the same binding without the condition.
 
 **Follow-up.** The binding on the scripts bucket (`fn_build_source_viewer`) is probably unnecessary. Remove it once a deploy confirms the build works, and check that a deploy without it still does.
+
+### E3 — A16, A18: WordPress shows "Error establishing a database connection"
+
+**Symptom.** The third apply succeeded and the site answers over HTTPS on the domain with an active certificate, but WordPress shows "Error establishing a database connection". The secrets are readable from the instance over SSH.
+
+**Error.** Startup script of the production instance, at boot:
+
+```
+20:50:12 wordpress-prod-9m7b google_metadata_script_runner: startup-script: >>> Attempt 1/10: waiting for secret wordpress-db-name...
+20:50:12 wordpress-prod-9m7b google_metadata_script_runner: Cloud Logging Client Error: rpc error: code = PermissionDenied
+         desc = Permission 'logging.logEntries.create' denied on resource
+         '//logging.googleapis.com/projects/gcp-wordpress-blueprint-v2/logs/google_metadata_script_runner' (or it may not exist).
+...
+20:51:53 wordpress-prod-9m7b google_metadata_script_runner: startup-script: >>> Attempt 10/10: waiting for secret wordpress-db-name...
+20:52:03 wordpress-prod-9m7b google_metadata_script_runner: startup-script: >>> ERROR: Failed to fetch secret wordpress-db-name after 10 attempts.
+20:52:03 wordpress-prod-9m7b google_metadata_script_runner: Script "startup-script" failed with error: exit status 1
+```
+
+**Cause.** The instance booted before what it depends on was ready, and nothing made it try again.
+
+- Nothing in Terraform orders the MIG after the secrets, their IAM bindings or the database, so the instance was created in the first minutes of the first apply. Its bindings were not effective yet: the same log shows the logging role denied too, although `roles/logging.logWriter` is granted to that service account. This also answers D4 of the backlog: the logging denial on production instances is propagation, not a missing role.
+- The startup script gives up after 10 attempts (about 110 seconds) and only runs at boot. `wp-config.php` kept its placeholders.
+- Even with the bindings effective, `wordpress-db-host` has no version until the Cloud SQL instance exists, which takes longer than the retries last.
+- The health check path returns 200 whether or not the instance is configured, so the load balancer serves the broken instance and auto-healing never replaces it.
+
+**Recovery of this deploy.** Replace the instances now that everything exists, so the startup script runs again:
+
+```bash
+gcloud compute instance-groups managed rolling-action replace wordpress-prod-mig   --region=europe-west1 --project=$PROJECT_ID
+```
+
+Confirmed: after the rolling replace the new instance configured itself and connected to the database. That also confirms the cause.
+
+**Fix.** Two changes, one for the first deploy and one for any later failure.
+
+- *Ordering.* The MIG module now depends on the secret versions, on the database and its user, and on `time_sleep.prod_vm_iam_propagation`, a 120-second wait after the secret and logging bindings of the production VM service account. Instances no longer boot before their dependencies exist.
+- *Readiness.* The startup script creates `/run/wordpress-configured` as its last step, and `health.php` answers 200 only if that file exists, 503 otherwise. An instance whose startup failed gets no traffic and is replaced by auto-healing. The marker means "configured", not "database reachable", so a database outage does not make every instance unhealthy. The Packer verification step checks that `health.php` is valid and does not report healthy in the image.
+
+The retries of the startup script were left as they are: with the readiness check, a failed startup ends in a replacement, not in a broken instance in service.
+
+**To verify.**
+
+- A deploy from scratch: the first instance comes up configured, with no secret or logging denial in its startup log.
+- A new image build (this changes `install.sh`), then plan and apply: the MIG rolls to instances that become healthy only after the startup script finishes.
+- Failure case: an instance whose startup script fails is reported unhealthy and replaced.

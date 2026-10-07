@@ -62,7 +62,21 @@ with open(path, 'w') as f:
 PYEOF
 
 echo ">>> Creating health check endpoint..."
-echo '<?php http_response_code(200); echo "ok"; ?>' > /var/www/html/health.php
+# Healthy only once the startup script has finished configuring WordPress and left its marker.
+# An instance whose startup failed answers 503: the load balancer sends it no traffic and the
+# MIG auto-healing replaces it. The marker means "configured", not "database reachable": tying
+# health to the database would make every instance unhealthy at once during a database outage.
+# /run is cleared on reboot, and the startup script runs again on every boot.
+cat > /var/www/html/health.php <<'PHPEOF'
+<?php
+if ( file_exists( '/run/wordpress-configured' ) ) {
+    http_response_code( 200 );
+    echo 'ok';
+} else {
+    http_response_code( 503 );
+    echo 'not configured';
+}
+PHPEOF
 
 echo ">>> Setting permissions..."
 chown -R www-data:www-data /var/www/html

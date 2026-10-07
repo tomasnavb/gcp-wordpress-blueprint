@@ -39,6 +39,17 @@ data "google_compute_image" "wordpress_golden" {
 module "wordpress_regional_mig" {
   source = "./modules/mig"
 
+  # Instances must not boot before what their startup script needs is ready: the secrets with
+  # their values (the database host only exists once Cloud SQL is created), the bindings that
+  # let them read those secrets, already propagated, and the database and user WordPress connects to.
+  # Without this the first instances boot minutes too early and fail to configure themselves.
+  depends_on = [
+    google_secret_manager_secret_version.wordpress_secrets,
+    time_sleep.prod_vm_iam_propagation,
+    google_sql_database.wordpress_db,
+    google_sql_user.wordpress_app_user,
+  ]
+
   region = var.subnet_prod_region
 
   # Instance template

@@ -69,7 +69,9 @@ build {
       "php --version",
       "systemctl is-enabled apache2",
       "php -l /var/www/html/wp-config.php",
-      "grep -q HTTP_X_FORWARDED_PROTO /var/www/html/wp-config.php"
+      "grep -q HTTP_X_FORWARDED_PROTO /var/www/html/wp-config.php",
+      "php -l /var/www/html/health.php",
+      "if curl -sf -o /dev/null http://localhost/health.php; then echo 'health.php must not report healthy in the image'; exit 1; fi"
     ]
   }
 }
