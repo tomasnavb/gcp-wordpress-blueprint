@@ -69,6 +69,18 @@ time_window_sec        = 300
 max_scaled_in_replicas = 1
 
 # ==============================================================
+# LOAD BALANCER
+# lb_use_reserved_ip must match RESERVE_LB_IP in configs/setup.sh:
+#   true  — the IP is reserved once by setup.sh and survives terraform destroy,
+#           so the DNS record does not change between deploys (production behaviour).
+#           A reserved IP is billed while no load balancer uses it; release it with
+#           `gcloud compute addresses delete wordpress-prod-lb-ip-global-external-lb --global`.
+#   false — Terraform creates and destroys the IP with the load balancer.
+#           No idle cost, but every deploy gets a new IP and the DNS record must be updated.
+# ==============================================================
+lb_use_reserved_ip = true
+
+# ==============================================================
 # DATABASE
 # instance_tier reduced for portfolio cost (prod recommendation: db-custom-4-16384)
 # ==============================================================

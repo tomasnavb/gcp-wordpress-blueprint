@@ -12,6 +12,13 @@ export REPO_NAME="your-repo-name"
 export REPO_OWNER="your-github-username-or-org"
 export IAP_USER_EMAIL="your-email-address"   # Google account granted SSH access through IAP
 
+# Static IP for the load balancer. Must match lb_use_reserved_ip in terraform/terraform.tfvars.
+#   true  — reserve a global IP here, outside Terraform. It survives terraform destroy, so the
+#           DNS record is set once. It is billed while no load balancer is using it.
+#   false — skip. Terraform creates the IP with the load balancer and destroys it with it.
+export RESERVE_LB_IP="true"
+export LB_IP_NAME="wordpress-prod-lb-ip-global-external-lb"   # name Terraform looks up; do not change one without the other
+
 # ==============================================================
 # Enable APIs required before Terraform runs
 # The rest are enabled by Terraform via terraform/APIs.tf
@@ -61,6 +68,32 @@ gcloud storage buckets update gs://${STATE_BUCKET} \
   --lifecycle-file=/tmp/lifecycle.json
 
 echo "Bucket gs://${STATE_BUCKET} created successfully."
+
+# ==============================================================
+# Static IP for the load balancer (optional, see RESERVE_LB_IP above)
+# Reserved here and not in Terraform so that terraform destroy does not release it.
+# ==============================================================
+if [ "${RESERVE_LB_IP}" = "true" ]; then
+  gcloud compute addresses create ${LB_IP_NAME} \
+    --project=${PROJECT_ID} \
+    --global \
+    --ip-version=IPV4
+
+  LB_IP=$(gcloud compute addresses describe ${LB_IP_NAME} \
+    --project=${PROJECT_ID} \
+    --global \
+    --format="value(address)")
+
+  echo ""
+  echo "Load balancer IP reserved: ${LB_IP}"
+  echo "Create a DNS A record for your domain pointing to this address."
+  echo "The managed SSL certificate is only issued once that record resolves."
+  echo "To release the IP and stop paying for it when it is no longer needed:"
+  echo "  gcloud compute addresses delete ${LB_IP_NAME} --project=${PROJECT_ID} --global"
+  echo ""
+else
+  echo "RESERVE_LB_IP is not 'true'. Terraform will create the load balancer IP (lb_use_reserved_ip must be false)."
+fi
 
 # ==============================================================
 # Cloud Build service account

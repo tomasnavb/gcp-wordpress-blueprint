@@ -2,6 +2,15 @@ locals {
   lb_suffix   = "-global-external-lb"
   ip_protocol = "TCP"
 
+  # Same name in both modes: the address this module creates, or the one reserved beforehand
+  # that it looks up. Either way the forwarding rules use local.ip_address.
+  ip_address_name = "${var.ip_address_name}${local.lb_suffix}"
+  ip_address = (
+    var.use_reserved_ip
+    ? data.google_compute_global_address.reserved[0].address
+    : google_compute_global_address.external_ip[0].address
+  )
+
   # The certificate name changes with the domain list. Together with create_before_destroy,
   # a domain change creates the new certificate before the old one is removed from the proxy.
   certificate_name = "${var.lb_name}-cert-${substr(md5(join(",", var.domain_names)), 0, 8)}"
@@ -15,9 +24,21 @@ locals {
 # 1. FRONTEND INFRASTRUCTURE & ENTRY POINTS
 # ==========================================
 
-# Reserved global external IP address used as the single entry point for all incoming traffic
+# Global external IP address used as the single entry point for all incoming traffic.
+# Two modes, selected by var.use_reserved_ip:
+#
+#   true  - the address was reserved outside Terraform (configs/setup.sh) and is only looked up
+#           here by name. It survives terraform destroy, so the DNS record keeps pointing to it.
+#   false - the address is created here and destroyed with the rest of the load balancer.
+#           Every new deploy gets a different IP and the DNS record has to be updated.
+data "google_compute_global_address" "reserved" {
+  count = var.use_reserved_ip ? 1 : 0
+  name  = local.ip_address_name
+}
+
 resource "google_compute_global_address" "external_ip" {
-  name = "${var.ip_address_name}${local.lb_suffix}"
+  count = var.use_reserved_ip ? 0 : 1
+  name  = local.ip_address_name
 }
 
 # Google-managed SSL certificate that automatically handles domain validation and renewals.
@@ -48,7 +69,7 @@ resource "google_compute_global_forwarding_rule" "https" {
   ip_protocol           = local.ip_protocol
   load_balancing_scheme = var.load_balancing_scheme
   port_range            = "443"
-  ip_address            = google_compute_global_address.external_ip.address
+  ip_address            = local.ip_address
   target                = google_compute_target_https_proxy.https.id
 }
 
@@ -59,7 +80,7 @@ resource "google_compute_global_forwarding_rule" "http" {
   ip_protocol           = local.ip_protocol
   load_balancing_scheme = var.load_balancing_scheme
   port_range            = "80"
-  ip_address            = google_compute_global_address.external_ip.address
+  ip_address            = local.ip_address
   target                = google_compute_target_http_proxy.http.id
 }
 

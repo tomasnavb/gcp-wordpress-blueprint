@@ -103,6 +103,7 @@ module "global_external_lb" {
   # Resource names (module appends "-global-external-lb" suffix to IP, url_map, health_check;
   # every other resource is named after lb_name)
   ip_address_name      = "wordpress-prod-lb-ip"
+  use_reserved_ip      = var.lb_use_reserved_ip
   lb_name              = "wordpress-prod-lb"
   url_map_name         = "wordpress-prod-lb-url-map"
   health_check_name    = "wordpress-prod-lb-hc"

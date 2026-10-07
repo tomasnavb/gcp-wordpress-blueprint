@@ -14,8 +14,13 @@ variable "backend_target_tags" {
 }
 
 variable "ip_address_name" {
-  description = "Base name for the reserved external IP address resource (module appends '-global-external-lb')"
+  description = "Base name of the external IP address (module appends '-global-external-lb'). With use_reserved_ip it is the name of the existing address to look up"
   type        = string
+}
+
+variable "use_reserved_ip" {
+  description = "true: use a global address reserved outside Terraform, looked up by name, which survives terraform destroy. false: create the address here and destroy it with the load balancer"
+  type        = bool
 }
 
 variable "lb_name" {
