@@ -14,8 +14,20 @@ export REPO_OWNER="your-github-username-or-org"
 # ==============================================================
 # Enable APIs required before Terraform runs
 # The rest are enabled by Terraform via terraform/APIs.tf
+#
+# serviceusage         — Terraform uses it to enable every other API, so it cannot enable it itself
+# cloudresourcemanager — project-level IAM bindings (this script and Terraform)
+# iam                  — service account creation (this script and Terraform)
+# cloudbuild           — triggers created at the end of this script
+# compute              — first Packer build runs before the first terraform apply
 # ==============================================================
-gcloud services enable compute.googleapis.com --project=${PROJECT_ID}
+gcloud services enable \
+  serviceusage.googleapis.com \
+  cloudresourcemanager.googleapis.com \
+  iam.googleapis.com \
+  cloudbuild.googleapis.com \
+  compute.googleapis.com \
+  --project=${PROJECT_ID}
 
 # ==============================================================
 # Terraform state bucket
@@ -64,6 +76,11 @@ sleep 15
 # Project-level IAM bindings
 # Adjust this list if your project manages additional resource types
 # ==============================================================
+
+# Service Usage — Terraform enables the project APIs listed in terraform/APIs.tf
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/serviceusage.serviceUsageAdmin"
 
 # Compute Engine — VMs, MIGs, instance templates, networks, firewalls, LBs, autoscalers
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
