@@ -152,7 +152,15 @@ resource "google_project_iam_member" "prod_vm_log_writer" {
   member  = local.service_accounts.prod
 }
 
-# IAM bindings take time to propagate. An instance that boots seconds after the two bindings
+# Read and write WordPress uploads in the uploads bucket, mounted with Cloud Storage FUSE.
+# roles/storage.objectUser on that bucket only: create, read and delete objects, nothing else.
+resource "google_storage_bucket_iam_member" "prod_vm_uploads_user" {
+  bucket = google_storage_bucket.uploads.name
+  role   = "roles/storage.objectUser"
+  member = local.service_accounts.prod
+}
+
+# IAM bindings take time to propagate. An instance that boots seconds after the bindings
 # above are created cannot read its secrets or write logs yet, and its startup script fails.
 # The MIG depends on this wait instead of on the bindings directly (see compute.tf).
 resource "time_sleep" "prod_vm_iam_propagation" {
@@ -161,6 +169,7 @@ resource "time_sleep" "prod_vm_iam_propagation" {
   depends_on = [
     google_secret_manager_secret_iam_member.prod_vm_secret_access,
     google_project_iam_member.prod_vm_log_writer,
+    google_storage_bucket_iam_member.prod_vm_uploads_user,
   ]
 }
 

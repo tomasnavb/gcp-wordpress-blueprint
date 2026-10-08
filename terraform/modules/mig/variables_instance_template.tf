@@ -48,6 +48,11 @@ variable "tags" {
   type        = list(string)
 }
 
+variable "extra_metadata" {
+  description = "Additional instance metadata, read by the startup script through the metadata server. Cannot override startup-script or enable-oslogin"
+  type        = map(string)
+}
+
 variable "service_account_email" {
   description = "Email of the service account attached to each instance"
   type        = string

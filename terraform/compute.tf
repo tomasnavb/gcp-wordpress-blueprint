@@ -53,14 +53,19 @@ module "wordpress_regional_mig" {
   region = var.subnet_prod_region
 
   # Instance template
-  template_name_prefix  = var.instance_template_name_prefix
-  machine_type          = var.machine_type
-  source_image          = data.google_compute_image.wordpress_golden.self_link
-  disk_size_gb          = local.disk_size_gb
-  disk_type             = local.disk_type
-  network               = module.vpc_prod.vpc_self_link
-  subnetwork            = module.vpc_prod.subnet_id
-  startup_script        = file("${path.root}/scripts/startup-prod.sh")
+  template_name_prefix = var.instance_template_name_prefix
+  machine_type         = var.machine_type
+  source_image         = data.google_compute_image.wordpress_golden.self_link
+  disk_size_gb         = local.disk_size_gb
+  disk_type            = local.disk_type
+  network              = module.vpc_prod.vpc_self_link
+  subnetwork           = module.vpc_prod.subnet_id
+  startup_script       = file("${path.root}/scripts/startup-prod.sh")
+  # Read by startup-prod.sh to mount the uploads bucket. The reference to the bucket resource
+  # also makes the instances wait until the bucket exists.
+  extra_metadata = {
+    "uploads-bucket" = google_storage_bucket.uploads.name
+  }
   service_account_email = google_service_account.prod_vm.email
   tags                  = var.instance_template_tags
 

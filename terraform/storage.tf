@@ -47,6 +47,41 @@ resource "google_storage_bucket" "scripts" {
 
 }
 
+# Bucket for WordPress uploads (media), mounted on every instance at wp-content/uploads with
+# Cloud Storage FUSE (gcsfuse). Uploads are the only content WordPress writes at runtime; keeping
+# them here makes the instances stateless: a file uploaded through one instance is visible from all
+# of them, and survives when the MIG replaces an instance.
+#
+# - Same region as the instances, for latency and to avoid inter-region traffic.
+# - force_destroy = false and protected in cloudbuild/scripts/check_destructive.py: it holds data.
+#   Empty it with configs/destroy.sh before terraform destroy.
+# - Versioning keeps deleted or overwritten files for 30 days.
+# - No retention policy: Cloud Storage FUSE cannot write to a bucket that has one.
+resource "google_storage_bucket" "uploads" {
+  depends_on    = [google_project_service.gcp_services]
+  name          = local.uploads_bucket_name
+  location      = var.subnet_prod_region
+  storage_class = "STANDARD"
+  force_destroy = false
+
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+
+  versioning {
+    enabled = true
+  }
+
+  # Delete noncurrent versions 30 days after they stop being the live version
+  lifecycle_rule {
+    condition {
+      days_since_noncurrent_time = 30
+    }
+    action {
+      type = "Delete"
+    }
+  }
+}
+
 # Archive the Cloud Function source code
 data "archive_file" "function_zip" {
   type        = "zip"

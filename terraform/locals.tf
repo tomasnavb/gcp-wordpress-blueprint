@@ -17,6 +17,7 @@ locals {
   # Cloud Storage
   db_backup_bucket_name = "${var.db_backup_bucket_base_name}-${var.project_id}"
   scripts_bucket_name   = "${var.scripts_bucket_base_name}-${var.project_id}"
+  uploads_bucket_name   = "${var.uploads_bucket_base_name}-${var.project_id}"
 
   # Cloud Scheduler
   scheduler_export_name          = "export-db-backup"

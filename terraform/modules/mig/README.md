@@ -33,6 +33,7 @@ No modules.
 | <a name="input_disk_type"></a> [disk\_type](#input\_disk\_type) | Boot disk type (pd-standard, pd-ssd, pd-balanced) | `string` | n/a | yes |
 | <a name="input_distribution_policy_target_shape"></a> [distribution\_policy\_target\_shape](#input\_distribution\_policy\_target\_shape) | Instance distribution strategy across zones (EVEN or ANY) | `string` | n/a | yes |
 | <a name="input_distribution_policy_zones"></a> [distribution\_policy\_zones](#input\_distribution\_policy\_zones) | Zones within the region where the MIG distributes instances for HA | `list(string)` | n/a | yes |
+| <a name="input_extra_metadata"></a> [extra\_metadata](#input\_extra\_metadata) | Additional instance metadata, read by the startup script through the metadata server. Cannot override startup-script or enable-oslogin | `map(string)` | n/a | yes |
 | <a name="input_health_check_name"></a> [health\_check\_name](#input\_health\_check\_name) | Name for the global HTTP health check resource | `string` | n/a | yes |
 | <a name="input_health_check_port"></a> [health\_check\_port](#input\_health\_check\_port) | TCP port the health check probe connects to | `number` | n/a | yes |
 | <a name="input_healthy_threshold"></a> [healthy\_threshold](#input\_healthy\_threshold) | Number of consecutive successful probes before an instance is considered healthy | `number` | n/a | yes |
