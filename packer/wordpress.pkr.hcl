@@ -70,6 +70,9 @@ build {
       "systemctl is-enabled apache2",
       "php -l /var/www/html/wp-config.php",
       "grep -q HTTP_X_FORWARDED_PROTO /var/www/html/wp-config.php",
+      "grep -q DISALLOW_FILE_MODS /var/www/html/wp-config.php",
+      "gcsfuse --version",
+      "test -d /var/www/html/wp-content/uploads",
       "php -l /var/www/html/health.php",
       "if curl -sf -o /dev/null http://localhost/health.php; then echo 'health.php must not report healthy in the image'; exit 1; fi"
     ]
