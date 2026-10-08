@@ -24,6 +24,14 @@ SAFE_TO_REPLACE = {
     "google_cloud_run_v2_service_iam_member",
 }
 
+# Individual resources that are safe to replace although their type is not safe in general.
+# The function source zip is named after its content hash, so any change to it uploads a new
+# object and removes the old one. It is rebuilt from the repository on every plan: no data in it.
+# Listed by address and not by type, because another bucket object could hold data.
+SAFE_TO_REPLACE_ADDRESSES = {
+    "google_storage_bucket_object.function_code",
+}
+
 # Resources that hold data. Destroying or replacing them is blocked in enforce mode
 # even with ALLOW_DESTRUCTIVE=true. Removing an entry here requires a reviewed commit.
 PROTECTED_TYPES = {
@@ -55,7 +63,7 @@ def find_destructive_changes(plan):
             continue
 
         # Skip resources that are routinely replaced without data loss risk.
-        if is_replace and resource_type in SAFE_TO_REPLACE:
+        if is_replace and (resource_type in SAFE_TO_REPLACE or address in SAFE_TO_REPLACE_ADDRESSES):
             print(f"  [replace/safe] {address} — skipped ({resource_type})")
             continue
 
