@@ -40,6 +40,7 @@ PROTECTED_TYPES = {
 }
 PROTECTED_ADDRESSES = {
     "google_storage_bucket.cloudsql_backups",
+    "google_storage_bucket.uploads",
 }
 
 
