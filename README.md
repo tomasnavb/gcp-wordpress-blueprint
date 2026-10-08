@@ -15,7 +15,7 @@ Production-grade WordPress infrastructure on Google Cloud Platform, fully provis
 
 ![Architecture Diagram](docs/architecture.jpeg)
 
-> **Outdated diagram:** it still shows the regional HTTP load balancer with its proxy-only subnet. The project now uses a global HTTPS load balancer, as described below. An updated diagram will replace it in the coming days.
+> **Outdated diagram:** it still shows the regional HTTP load balancer with its proxy-only subnet, and it does not show the uploads bucket mounted on the instances. The project now uses a global HTTPS load balancer and keeps WordPress uploads in Cloud Storage, as described below. An updated diagram will replace it shortly.
 
 ### Overview
 
@@ -55,6 +55,22 @@ The load balancer is global rather than regional because Google-managed SSL cert
 A deploy that creates its own IP gets a different address every time, so the DNS record has to be updated and the certificate waits for DNS again. With `lb_use_reserved_ip = true` (the default) the load balancer uses a global IP reserved once by `configs/setup.sh`, outside Terraform. It survives `terraform destroy`, so the DNS record is set once.
 
 A reserved IP is billed while no load balancer is using it. For a portfolio project that is torn down between tests, release it when a test session ends (see [Destroy](#destroy)), or set both `RESERVE_LB_IP` and `lb_use_reserved_ip` to `false` to let Terraform create and destroy the IP with the load balancer.
+
+### Stateless WordPress Instances
+Instances in a MIG are replaced at any time: auto-healing, a new image, scaling in. Anything written to their disks is lost, and a file written by one instance does not exist on the others. WordPress keeps writing two kinds of content at runtime, and each is handled differently:
+
+- **Uploads (media).** Stored in a Cloud Storage bucket (`wordpress-uploads-<project_id>`) that every instance mounts at `wp-content/uploads` with [Cloud Storage FUSE](https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/overview). An image uploaded through one instance is visible from all of them and survives their replacement. WordPress needs no plugin and no change: it writes to what looks like a local folder.
+- **Plugins and themes.** Part of the image. `DISALLOW_FILE_MODS` stops the admin panel from installing, updating or editing them, since a change made there would exist on one instance only. A new plugin, or an update, is a new image and a rolling update.
+
+How the mount is wired:
+
+- The image only installs `gcsfuse` (pinned version, from Google's signed apt repository) and creates the mount point. It is the same image for any project.
+- The bucket name reaches the instances as instance metadata (`uploads-bucket`), set by Terraform from the same value that names the bucket. The startup script reads it from the metadata server and mounts the bucket on every boot.
+- `gcsfuse` authenticates as the instance service account, which has `roles/storage.objectUser` on that bucket only. No service account keys.
+- The mount happens before the readiness marker, so an instance that fails to mount is reported unhealthy and replaced.
+- The bucket holds data: `force_destroy = false`, protected in the destructive change check, versioned (overwritten or deleted files kept for 30 days), and without a retention policy, which Cloud Storage FUSE cannot write to.
+
+Cloud Storage FUSE is not a POSIX file system: it has higher latency than a local disk and no file locking. That suits uploads, which are written once and read many times. Serving them straight from the bucket through the load balancer, without going through the instances, is a possible next step.
 
 ### Immutable Infrastructure with Packer
 WordPress instances are deployed from a golden image built with Packer (`packer/wordpress.pkr.hcl`). The image includes WordPress, PHP, and all dependencies pre-installed. Terraform resolves the `wordpress-golden` image family to the concrete latest image on every plan, so a new build shows up as an instance template replacement and the MIG rolls it out.
@@ -105,7 +121,7 @@ WordPress database credentials (`db-name`, `db-user`, `db-password`, `db-host`, 
 | Secret Manager | Database credentials storage and access |
 | Cloud Functions v2 | Serverless backup orchestration |
 | Cloud Scheduler | Automated backup triggers (cron) |
-| Cloud Storage | Backup exports (90d) and function source code |
+| Cloud Storage | Backup exports (90d), function source code, and WordPress uploads mounted on the instances with Cloud Storage FUSE |
 | Packer (HashiCorp) | Golden image build pipeline |
 
 ---
@@ -119,7 +135,8 @@ gcp-wordpress-blueprint/
 │   └── architecture.jpeg
 │
 ├── configs/
-│   └── setup.sh                     # One-time bootstrap: APIs, state bucket, load balancer IP, Cloud Build SA, IAM, triggers
+│   ├── setup.sh                     # One-time bootstrap: APIs, state bucket, load balancer IP, Cloud Build SA, IAM, triggers
+│   └── destroy.sh                   # gcloud steps around terraform destroy: empty the data buckets, delete the peering if needed
 │
 ├── cloudbuild/
 │   ├── packer.yaml                  # Cloud Build pipeline: install pinned Packer, golden image build
@@ -359,7 +376,7 @@ Both plan triggers list every resource the plan would destroy or replace, withou
 | No destroy or replace | Applies |
 | Replace of an instance template or an IAM binding | Applies — routine, no data involved |
 | Any other destroy or replace | Rejected unless `_ALLOW_DESTRUCTIVE=true` is passed |
-| Destroy or replace of the Cloud SQL instance, its database or the backup bucket | Always rejected |
+| Destroy or replace of the Cloud SQL instance, its database, the backup bucket or the uploads bucket | Always rejected |
 
 To apply a plan with destructive changes after reviewing them:
 
@@ -376,7 +393,15 @@ The protected resources are listed in [cloudbuild/scripts/check_destructive.py](
 
 ### Destroy
 
-The pipeline cannot destroy the environment: the database and the backup bucket are protected. Tear it down locally:
+The pipeline cannot destroy the environment: the database and the data buckets are protected. Tear it down from Cloud Shell. [configs/destroy.sh](configs/destroy.sh) holds the gcloud steps that `terraform destroy` needs around it; it asks to type the project ID before changing anything.
+
+First empty the backup and uploads buckets. They keep `force_destroy = false` on purpose, so Terraform refuses to delete them while they hold objects, and their content is created by Cloud SQL and by WordPress, not by Terraform. This deletes the database exports and the uploads for good, all versions included:
+
+```bash
+bash configs/destroy.sh empty-buckets
+```
+
+Then run the destroy:
 
 ```bash
 cd terraform
@@ -384,6 +409,13 @@ mkdir -p tmp
 terraform init -backend-config="bucket=${PROJECT_ID}-wordpress-terraform-state"
 export TF_VAR_project_id=$PROJECT_ID
 export TF_VAR_iap_user_email=$IAP_USER_EMAIL
+terraform destroy
+```
+
+If the destroy stops on `google_service_networking_connection.private_connection` with `Producer services (e.g. CloudSQL, ...) are still using this connection`, Google is still holding the private connection of the deleted Cloud SQL instance. The connection has `deletion_policy = "ABANDON"` to avoid this, so it should not happen; if it does, or if the destroy stops on the reserved range or the VPC instead, delete the peering from the VPC side and run the destroy again:
+
+```bash
+bash configs/destroy.sh delete-peering
 terraform destroy
 ```
 
@@ -484,6 +516,7 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 - `project_id` and the operator email excluded from version control — passed as Cloud Build substitutions (`TF_VAR_project_id`, `TF_VAR_iap_user_email`)
 - Cloud SQL instance has `deletion_protection` and `prevent_destroy` set to `false` for portfolio teardown convenience (set to `true` in production)
 - Least-privilege service accounts per workload (VM, function, scheduler)
+- Instances reach the uploads bucket with their own service account, scoped to that bucket; no service account keys
 - Custom IAM role for the backup function with only the required Cloud SQL permissions
 
 ---
