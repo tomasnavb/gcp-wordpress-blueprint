@@ -513,7 +513,7 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 - Cloud SQL is accessible only via private IP within the VPC
 - SSH access exclusively through IAP (no open port 22 to the internet)
 - Database credentials stored in Secret Manager, never in environment variables or files
-- `project_id` and the operator email excluded from version control — passed as Cloud Build substitutions (`TF_VAR_project_id`, `TF_VAR_iap_user_email`)
+- `project_id` and the operator email are not written in the code or the configuration — they are passed as Cloud Build substitutions (`TF_VAR_project_id`, `TF_VAR_iap_user_email`), so the repository deploys to any project without being edited. The project ID is an identifier, not a credential, and appears in the screenshots below
 - Cloud SQL instance has `deletion_protection` and `prevent_destroy` set to `false` for portfolio teardown convenience (set to `true` in production)
 - Least-privilege service accounts per workload (VM, function, scheduler)
 - Instances reach the statics bucket with their own service account, scoped to that bucket; no service account keys
@@ -523,33 +523,65 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 
 ## Screenshots
 
-### Cloud Build — Triggers
+Taken from a deploy from scratch of this repository.
 
-![Cloud Build Triggers](docs/screenshots/gcb_activators.png)
+### CI/CD
 
-### Cloud Build — Terraform Plan (successful)
+**Cloud Build — Triggers.** The four triggers created by `configs/setup.sh`.
 
-![Terraform Plan](docs/screenshots/gcb_success_plan.png)
+![Cloud Build triggers](docs/screenshots/gcb-triggers.png)
 
-### Compute Engine — VM Instances (MIG)
+**Cloud Build — Plan and apply.** A plan generated on `main` by `terraform-plan-main`, the apply of that plan by `terraform-apply`, and the build of the backup function that the apply starts in `europe-west1`.
 
-![VM Instances](docs/screenshots/vm_instances.png)
+![Cloud Build history with a successful plan and apply](docs/screenshots/plan-apply-success.png)
 
-### Cloud SQL — Instance
+### Compute
 
-![Cloud SQL](docs/screenshots/cloudsql_instance.png)
+**Compute Engine — VM instances.** The management VM and a WordPress instance of the MIG. Neither has an external IP.
 
-### Secret Manager — Secrets
+![VM instances](docs/screenshots/vm-instances.png)
 
-![Secret Manager](docs/screenshots/secrets.png)
+**Load balancer — Healthy backend.** The MIG as backend of the load balancer. An instance counts as healthy only after its startup script has finished configuring it.
 
-### Cloud Scheduler — Backup Jobs
+![Healthy backend](docs/screenshots/healthy-backend.png)
 
-![Cloud Scheduler](docs/screenshots/scheduler_executions.png)
+### Data
 
-### WordPress — Online via Load Balancer
+**Cloud SQL — Instance.**
 
-![WordPress](docs/screenshots/wordpress_online.png)
+![Cloud SQL instance](docs/screenshots/cloudsql-instance.png)
+
+**Secret Manager — Secrets.**
+
+![Secret Manager secrets](docs/screenshots/secrets.png)
+
+**Cloud Scheduler — Backup jobs.** The export and snapshot jobs after a successful run.
+
+![Cloud Scheduler backup jobs](docs/screenshots/scheduler-jobs-success.png)
+
+**Cloud Storage — Uploads in the statics bucket.** A file uploaded from WordPress, stored under `uploads/` in the bucket that every instance mounts with Cloud Storage FUSE.
+
+![Uploaded file in the statics bucket](docs/screenshots/static-objects-upload.png)
+
+### HTTPS
+
+**HTTP redirects to HTTPS.** A request on port 80 is answered with a 301 to the HTTPS URL.
+
+![HTTP to HTTPS redirect](docs/screenshots/https-redirection.png)
+
+**TLS 1.1 is rejected.** The SSL policy of the load balancer accepts TLS 1.2 and later only.
+
+![TLS 1.1 rejected](docs/screenshots/old-tls-versions-forbidden.png)
+
+### WordPress
+
+**Setup over HTTPS.** The installer under `/wp-admin`, served on the domain through the load balancer with the managed certificate.
+
+![WordPress setup](docs/screenshots/wordpress-setup.png)
+
+**Online via the load balancer.**
+
+![WordPress online](docs/screenshots/wordpress-hello-world.png)
 
 ---
 
