@@ -23,7 +23,7 @@ In priority order.
 
 | ID | Task | Created | Status | Detail |
 |---|---|---|---|---|
-| T01 | Run the deploy checks not run yet: A2 (`setup.sh` stops without its variables), A5 (`nslookup`), A10 ("No destructive changes detected"), A14 (both scheduler jobs), A16 (no logging denial on a fresh production instance), A20 (HTTP redirects to HTTPS), A21 (TLS 1.1 rejected), B6 (a destroy listed by the plan) | 2026-10-08 | `pending` | Verification, phases A and B |
+| T01 | Run the deploy checks not run yet: A2 (`setup.sh` stops without its variables), A5 (`nslookup`), A10 ("No destructive changes detected"), A16 (no logging denial on a fresh production instance), B6 (a destroy listed by the plan). Confirmed on 2026-10-11: A14 (both scheduler jobs), A20 (HTTP redirects to HTTPS) and A21 (TLS 1.1 rejected) | 2026-10-08 | `in-progress` | Verification, phases A and B |
 | T02 | Management VM writes its logs to Cloud Logging (`roles/logging.logWriter`) | 2026-10-07 | `unverified` | Backlog 3, check A15 |
 | T03 | The apply pipeline prints the outputs: load balancer IP, site URLs, certificate name | 2026-10-07 | `unverified` | Backlog 7, check A13 |
 | T04 | An instance whose startup script fails is reported unhealthy and replaced | 2026-10-08 | `pending` | Verification E3 |
@@ -31,7 +31,7 @@ In priority order.
 | T06 | A rollout that replaces the function source zip passes without `_ALLOW_DESTRUCTIVE` | 2026-10-08 | `unverified` | Verification E4 |
 | T07 | Destroy procedure with `configs/destroy.sh` works as the README describes | 2026-10-08 | `unverified` | Verification E5 |
 | T08 | Correct the 10–15 minutes stated for the image build in the README and `cloudbuild/packer.yaml`. Measured: 4 min 22 s for the whole build from the trigger on 2026-10-11 (3 min 26 s for the first manual build on 2026-10-07) | 2026-10-08 | `in-progress` | Verification, build log notes |
-| T09 | New screenshots (console in English, no admin username, project ID and number hidden) and updated architecture diagram; then fix the image references in the README | 2026-10-08 | `in-progress` | Devlog 10-08, 7 |
+| T09 | New screenshots (console in English; hidden: project number, emails, WordPress admin username, secret values; the project ID may show) and updated architecture diagram; then fix the image references in the README | 2026-10-08 | `in-progress` | Devlog 10-08, 7 |
 
 ### 2. Secrets
 
