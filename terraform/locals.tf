@@ -19,6 +19,13 @@ locals {
   scripts_bucket_name   = "${var.scripts_bucket_base_name}-${var.project_id}"
   uploads_bucket_name   = "${var.uploads_bucket_base_name}-${var.project_id}"
 
+  # Access settings shared by every bucket, set here so no bucket can drift from them:
+  # - uniform bucket-level access: permissions come from IAM only, no per-object ACLs.
+  #   IAM conditions on buckets (IAM.tf, function build SA) require it.
+  # - public access prevention: the bucket and its objects can never be made public.
+  bucket_uniform_access           = true
+  bucket_public_access_prevention = "enforced"
+
   # Cloud Scheduler
   scheduler_export_name          = "export-db-backup"
   scheduler_export_description   = "Cloud Scheduler job to trigger Cloud Function for CloudSQL export backup"

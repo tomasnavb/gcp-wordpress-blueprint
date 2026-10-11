@@ -32,7 +32,8 @@ resource "google_storage_bucket" "cloudsql_backups" {
     }
   }
 
-  uniform_bucket_level_access = true
+  uniform_bucket_level_access = local.bucket_uniform_access
+  public_access_prevention    = local.bucket_public_access_prevention
 
 }
 
@@ -43,7 +44,8 @@ resource "google_storage_bucket" "scripts" {
   location      = "EU"
   storage_class = "STANDARD"
 
-  uniform_bucket_level_access = true
+  uniform_bucket_level_access = local.bucket_uniform_access
+  public_access_prevention    = local.bucket_public_access_prevention
 
 }
 
@@ -64,8 +66,8 @@ resource "google_storage_bucket" "uploads" {
   storage_class = "STANDARD"
   force_destroy = false
 
-  uniform_bucket_level_access = true
-  public_access_prevention    = "enforced"
+  uniform_bucket_level_access = local.bucket_uniform_access
+  public_access_prevention    = local.bucket_public_access_prevention
 
   versioning {
     enabled = true
