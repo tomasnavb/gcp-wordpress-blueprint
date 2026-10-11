@@ -15,6 +15,20 @@ apt-get install -y \
   libapache2-mod-php \
   wget curl unzip
 
+echo ">>> Installing Cloud Storage FUSE..."
+# Mounts the uploads bucket at wp-content/uploads (done at boot by the startup script, which knows
+# the bucket name). Installed from Google's apt repository: apt verifies the signature of every
+# package against the repository key, so no separate checksum is needed. The version is pinned;
+# to upgrade, change GCSFUSE_VERSION. The available versions are listed in the build log.
+GCSFUSE_VERSION="3.12.1"
+. /etc/os-release
+curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg -o /usr/share/keyrings/cloud.google.asc
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt gcsfuse-${VERSION_CODENAME} main" \
+  > /etc/apt/sources.list.d/gcsfuse.list
+apt-get update -y
+apt-cache madison gcsfuse | head -n 5
+apt-get install -y "gcsfuse=${GCSFUSE_VERSION}"
+
 echo ">>> Downloading WordPress..."
 cd /var/www/html
 curl -O https://wordpress.org/latest.tar.gz
@@ -47,6 +61,11 @@ if ( isset( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) && strpos( $_SERVER['HTTP_X_FOR
 }
 define( 'FORCE_SSL_ADMIN', true );
 
+/* Immutable instances: plugins and themes come with the image. The admin panel cannot install,
+   update or edit them, because a change made there would exist on one instance only and be lost
+   when the MIG replaces it. Uploads are not affected. */
+define( 'DISALLOW_FILE_MODS', true );
+
 """
 
 with open(path, 'r') as f:
@@ -77,6 +96,10 @@ if ( file_exists( '/run/wordpress-configured' ) ) {
     echo 'not configured';
 }
 PHPEOF
+
+echo ">>> Creating the uploads mount point..."
+# The startup script mounts the uploads bucket here. Nothing is stored in it in the image.
+mkdir -p /var/www/html/wp-content/uploads
 
 echo ">>> Setting permissions..."
 chown -R www-data:www-data /var/www/html

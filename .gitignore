@@ -27,5 +27,5 @@ packer_cache/
 # Claude Code
 CLAUDE.md
 
-# Personal notes
-docs/notes.txt
+# Personal notes (not part of the repository)
+docs/personal/

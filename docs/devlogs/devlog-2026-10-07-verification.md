@@ -11,7 +11,35 @@ Follow the README step by step on a new project. Fill in **Result** as you go an
 | `failed` | Did not work; see the error entry |
 | `skipped` | Not run; say why |
 
-**Project:** `gcp-wordpress-blueprint-v2` · **Date:** 2026-10-07 · **Branch / commit:** `update/global-https-lb-and-pipeline` · _commit: fill in_
+**Project:** `<project-id>` · **Date:** 2026-10-07 · **Branch / commit:** `update/global-https-lb-and-pipeline` · _commit: fill in_
+
+## Where this stands (end of session, 2026-10-08)
+
+**The environment is down.** `terraform destroy` was run at the end of the session; it stopped on two errors and completed after the recovery in E5. What remains is everything outside Terraform: the project, the state bucket, the pipeline service account and triggers, the golden image, and the reserved load balancer IP, so the DNS record does not need to change. To bring it back: run `terraform-plan-main` and then `terraform-apply` from their triggers.
+
+Done so far:
+
+- Bootstrap, first image build, plan and apply from scratch. Three errors on the way, fixed and merged: E1 (IAM propagation before the function build), E2 (the build reads from the `gcf-v2-sources` bucket), E3 (instances booting before their dependencies; readiness check added).
+- The site answers over HTTPS on the domain with an active certificate, and WordPress connects to the database after the instances were replaced.
+- Pull request #5 merged to `main`. The pull request plan, the merge plan and the `packer-build` trigger through IAP all ran.
+
+Open, in the order to pick them up:
+
+1. **Result of the apply with `_ALLOW_DESTRUCTIVE=true`**, which was running when the session ended (B8). If it passed: are the new instances healthy with the new `health.php`, and does WordPress load? That is the first real test of the readiness check of E3.
+2. **E4, undecided.** The apply without the flag was rejected because of the function source zip. Diagnosis and options are in E4 below; no change has been made.
+3. Answers still missing for this checklist: whether the apply printed the three outputs (A13), whether the `gcf-v2-sources` bucket has uniform bucket-level access (the IAM condition of E2 worked, which suggests it does), and `nslookup` of the domain (A5).
+4. Checks not run yet: A2, A10 (the "No destructive changes detected" line), A14, A15, A16 on a fresh instance, A19 to A21, B6.
+5. Before tearing down: new screenshots (C1). Take them with the console in English and the browser translation off; the ones taken so far show translated labels ("Fountain", "Correct").
+6. Follow-ups noted in E2 and E3: remove the build SA binding on the scripts bucket and confirm; test that an instance with a failed startup is replaced.
+7. Next `terraform destroy`: record whether `deletion_policy = "ABANDON"` alone lets it finish, or whether the peering still has to be deleted by hand (E5).
+
+Build references:
+
+| Build | What | Result |
+|---|---|---|
+| `fe5e4bba-38b3-4804-9672-f0b856b2c1a2` | First image build, manual, `_USE_IAP=false`. 3 min 26 s in total: install-packer 40 s, init 3 s, validate 2 s, build 2 min 36 s | Success |
+| `fdfb9bd4-0b61-4235-9975-4acd04996cc3` | First plan, manual, 9 steps, artifacts uploaded | Success |
+| `295456ba-9ce2-4463-b3d8-b87929e8d475` | Build of the backup function by Cloud Functions, after the fix of E2. Its log shows the source fetched from `gcf-v2-sources-<project number>-europe-west1/wordpress-fn-db-backup-prod/function-source.zip`, which confirms the cause of E2 | Success |
 
 ## Before starting
 
@@ -37,7 +65,7 @@ The README commands upload the local checkout, so nothing has to be merged yet. 
 | A8 | Packer verification step: `php -l` reports no syntax errors in `wp-config.php` and the proxy block is found | 8 | `done` |
 | A9 | Plan build: the email validation passes and both data sources resolve (golden image, reserved IP) | 5, 6, LB | `done` |
 | A10 | Plan build: step `report-destructive-changes` prints "No destructive changes detected" and the artifacts are uploaded | 4 | `pending` |
-| A11 | Apply build: step `enforce-destructive-changes` passes | 4 | `pending` |
+| A11 | Apply build: step `enforce-destructive-changes` passes | 4 | `done` |
 | A12 | Apply build: the Cloud Function builds. The Compute Engine default SA has no role granted by hand | 2 | `done` |
 | A13 | Apply build: the last step prints `load_balancer_ip`, `site_urls` and `ssl_certificate_name` | 7 | `pending` |
 | A14 | Both scheduler jobs run successfully (`export-db-backup`, `snapshot-db-backup`) | 2 | `pending` |
@@ -101,13 +129,13 @@ Run after phase A is complete.
 
 | # | Check | Task | Result |
 |---|---|---|---|
-| B1 | Opening the pull request runs `terraform-plan-pr`; nothing is uploaded to the state bucket | 4 | `pending` |
-| B2 | Merging runs `terraform-plan-main`; the plan is uploaded and shows no changes | 4 | `pending` |
-| B3 | A merged change in `packer/**` runs `packer-build` with IAP; the build VM has no external IP | 6 | `pending` |
-| B4 | `terraform-plan-main`, run by hand after B3, shows the instance template replacement | 6 | `pending` |
-| B5 | `terraform-apply` accepts that plan without `_ALLOW_DESTRUCTIVE`; the MIG rolls to the new image | 4, 6 | `pending` |
+| B1 | Opening the pull request runs `terraform-plan-pr`; nothing is uploaded to the state bucket | 4 | `done` |
+| B2 | Merging runs `terraform-plan-main`; the plan is uploaded and shows no changes | 4 | `done` |
+| B3 | A merged change in `packer/**` runs `packer-build` with IAP; the build VM has no external IP | 6 | `done` |
+| B4 | `terraform-plan-main`, run by hand after B3, shows the instance template replacement | 6 | `done` |
+| B5 | `terraform-apply` accepts that plan without `_ALLOW_DESTRUCTIVE`; the MIG rolls to the new image | 4, 6 | `failed` |
 | B6 | A merged change that destroys a resource (remove `vpcaccess.googleapis.com` from `APIs.tf`) is listed by the plan | 4 | `pending` |
-| B7 | `terraform-apply` rejects that plan without the flag | 4 | `pending` |
+| B7 | `terraform-apply` rejects that plan without the flag | 4 | `done` |
 | B8 | `terraform-apply` accepts the same plan with `_ALLOW_DESTRUCTIVE=true` | 4 | `pending` |
 
 ## Before tearing down
@@ -115,8 +143,8 @@ Run after phase A is complete.
 | # | Check | Result |
 |---|---|---|
 | C1 | New screenshots taken: triggers, a successful plan, VM instances, WordPress over HTTPS, scheduler jobs | `pending` |
-| C2 | `terraform destroy` run locally | `pending` |
-| C3 | The reserved IP still exists after the destroy | `pending` |
+| C2 | `terraform destroy` run locally | `done` |
+| C3 | The reserved IP still exists after the destroy | `done` |
 | C4 | Reserved IP released, if no further test session is planned | `pending` |
 | C5 | Triggers deleted and repository disconnected, if the project is going to be deleted | `pending` |
 
@@ -129,7 +157,7 @@ One entry per error: the check number, the exact error text, the cause and the f
 **Error.** First apply, on creating `google_cloudfunctions2_function.db_backup_fn`:
 
 ```
-The service account cloudsql-backup-fn-build-sa@gcp-wordpress-blueprint-v2.iam.gserviceaccount.com does not have
+The service account cloudsql-backup-fn-build-sa@<project-id>.iam.gserviceaccount.com does not have
 permission to write logs. Ensure that the service account used for the build has the necessary permission
 logging.logEntries.create(included in the "Log Writer" role).
 ```
@@ -154,8 +182,8 @@ logging.logEntries.create(included in the "Log Writer" role).
 **Error.** Second apply, same resource:
 
 ```
-Access to bucket gcf-v2-sources-979220652906-europe-west1 denied. You must grant Storage Object Viewer permission to
-cloudsql-backup-fn-build-sa@gcp-wordpress-blueprint-v2.iam.gserviceaccount.com. If you are using VPC Service Controls,
+Access to bucket gcf-v2-sources-<project-number>-europe-west1 denied. You must grant Storage Object Viewer permission to
+cloudsql-backup-fn-build-sa@<project-id>.iam.gserviceaccount.com. If you are using VPC Service Controls,
 you must also grant it access to your service perimeter.
 ```
 
@@ -179,7 +207,7 @@ The role did not show in `gcloud projects get-iam-policy` because a bucket-level
 20:50:12 wordpress-prod-9m7b google_metadata_script_runner: startup-script: >>> Attempt 1/10: waiting for secret wordpress-db-name...
 20:50:12 wordpress-prod-9m7b google_metadata_script_runner: Cloud Logging Client Error: rpc error: code = PermissionDenied
          desc = Permission 'logging.logEntries.create' denied on resource
-         '//logging.googleapis.com/projects/gcp-wordpress-blueprint-v2/logs/google_metadata_script_runner' (or it may not exist).
+         '//logging.googleapis.com/projects/<project-id>/logs/google_metadata_script_runner' (or it may not exist).
 ...
 20:51:53 wordpress-prod-9m7b google_metadata_script_runner: startup-script: >>> Attempt 10/10: waiting for secret wordpress-db-name...
 20:52:03 wordpress-prod-9m7b google_metadata_script_runner: startup-script: >>> ERROR: Failed to fetch secret wordpress-db-name after 10 attempts.
@@ -213,3 +241,110 @@ The retries of the startup script were left as they are: with the readiness chec
 - A deploy from scratch: the first instance comes up configured, with no secret or logging denial in its startup log.
 - A new image build (this changes `install.sh`), then plan and apply: the MIG rolls to instances that become healthy only after the startup script finishes.
 - Failure case: an instance whose startup script fails is reported unhealthy and replaced.
+
+### Phase B notes (2026-10-08)
+
+- B1, B2: the pull request plan and the merge plan ran from their triggers. Pull request #5.
+- B3: `packer-build` ran from its trigger with `_USE_IAP=true` and built the image. That the build VM had no external IP was not checked separately.
+- B4: the plan run by hand after the image build shows the instance template replacement.
+- B5: failed, see E4.
+- B7: `terraform-apply` rejected the plan without the flag. Reached through E4, not through the planned test with `vpcaccess`.
+- B8: the same plan with `_ALLOW_DESTRUCTIVE=true` was running at the end of the session.
+
+### E4 — B5: an image rollout is rejected as destructive
+
+**Status: diagnosed, no change made. Decision pending.**
+
+**Symptom.** The apply of the plan generated after the image build was rejected by `enforce-destructive-changes`. The plan contained:
+
+```
+# google_storage_bucket_object.function_code must be replaced
+-/+ resource "google_storage_bucket_object" "function_code" {
+
+# module.wordpress_regional_mig.google_compute_instance_template.this must be replaced
++/- resource "google_compute_instance_template" "this" {
+```
+
+The instance template is in the safe list of `check_destructive.py` and was not the problem. The function source zip was.
+
+**Cause 1 (certain): the check treats the zip as destructive.** The object is named after the hash of its content, so any change to the zip uploads a new object and removes the old one, which Terraform reports as a replace. The safe list is by resource type and has no bucket objects. The zip is rebuilt from the repository on every plan and holds no data: a false positive.
+
+**Cause 2 (likely, not verified byte by byte): the zip changed although the code did not.** The first plan was built from a local upload (`gcloud builds submit`) and this one from a trigger checkout. `archive_file` keeps the file permissions of the machine that builds the zip, so the same source can produce a different zip. Checked: both source files have LF line endings in the repository and on disk, and mode `644` in the repository, so line endings are not the cause. Every change of the zip also makes Cloud Functions rebuild and redeploy the function.
+
+**Options for cause 1.**
+
+- Mark only that object as safe to replace, by address. Other bucket objects keep needing the flag. Proposed.
+- Mark the whole `google_storage_bucket_object` type as safe. Simpler, but would let a bucket object holding data be replaced.
+- Change nothing and pass the flag whenever the function code changes. The flag loses meaning if it is used routinely.
+
+**Options for cause 2.**
+
+- Fix the permissions inside the zip with `output_file_mode = "0644"` in the `archive_file`. Causes one last replace of the zip. Proposed.
+- Add a `.gitattributes` forcing LF line endings. Preventive: protects against the same effect through line endings and protects the shell scripts. Optional.
+- Change nothing. The zip should stay stable as long as every plan runs from a trigger; the problem returns if local and trigger plans are mixed.
+
+Also proposed: explain in the README which replacements are routine and why.
+
+### E5 — C2: `terraform destroy` stops on the backup bucket and on the Cloud SQL network connection
+
+**Errors.** Local `terraform destroy`, after most resources had been deleted:
+
+```
+Error: Error trying to delete bucket wordpress-db-backups-<project-id> without `force_destroy` set to true
+
+Error: Unable to remove Service Networking Connection, err: Error waiting for Delete Service Networking Connection:
+Error code 9, message: Failed to delete connection; Producer services (e.g. CloudSQL, Cloud Memstore, etc.) are still
+using this connection.
+```
+
+**Cause.**
+
+- *Bucket.* `google_storage_bucket.cloudsql_backups` has `force_destroy = false`, so Terraform refuses to delete it while it holds objects. The export job had run at midnight and left a file. Versioning is enabled, so old versions count too.
+- *Connection.* Cloud SQL with a private IP uses a network connection between the VPC and Google's network (`google_service_networking_connection.private_connection`). After the instance is deleted, Google keeps reporting that connection as in use for a while, and rejects its deletion. It is the network connection that is held, not database sessions.
+
+**Recovery.** Run in this order.
+
+1. Empty the backup bucket, all versions included. This deletes the database exports for good:
+
+   ```bash
+   gcloud storage rm --recursive --all-versions      "gs://wordpress-db-backups-$PROJECT_ID/**"
+   ```
+
+2. Delete the connection from the VPC side:
+
+   ```bash
+   gcloud compute networks peerings delete servicenetworking-googleapis-com      --network=wordpress-prod-vpc      --project=$PROJECT_ID
+   ```
+
+3. Run the destroy again:
+
+   ```bash
+   terraform destroy
+   ```
+
+4. Only if it fails again on the connection: remove it from the state so Terraform stops trying to delete it, and repeat. Not needed on 2026-10-08:
+
+   ```bash
+   terraform state rm google_service_networking_connection.private_connection
+   terraform destroy
+   ```
+
+5. Confirm nothing is left:
+
+   ```bash
+   terraform state list
+   ```
+
+**Result (2026-10-08).** Steps 1 to 3 were enough: with the bucket emptied and the peering deleted through gcloud, the second `terraform destroy` removed everything that was left.
+
+**Fix.**
+
+- Connection: `deletion_policy = "ABANDON"` on `google_service_networking_connection.private_connection` (2026-10-08, not yet tested). On destroy, Terraform removes the connection from the state without calling the API, so the error above no longer stops it. The dependency order does not change: the Cloud SQL instance is destroyed first, then the connection is abandoned, then Terraform deletes the reserved range (`google_compute_global_address.private_service_range`) and finally the VPC. The provider documentation describes this setting for exactly this case and warns that it can leave the connection dangling on Google's side until Google cleans it up.
+- Bucket: not changed. `force_destroy = false` stays, which is right for a backup bucket. Adding the command of step 1 to the destroy procedure in the README is still pending.
+
+**Uncertain.** Google may still refuse to delete the reserved range or the VPC while the abandoned connection and its peering exist. There are reports of this; it is not known whether it applies here. If the next destroy stops on either of them, the fallback is step 2 above (delete the peering through gcloud), then run `terraform destroy` again.
+
+**To verify on the next destroy.** Whether it finishes with `ABANDON` alone, or needs the peering deleted by hand. Record the result here.
+
+**Result (2026-10-09).** The next destroy finished without deleting the peering by hand. `ABANDON` is enough on its own; the peering deletion stays documented only as a fallback.
+

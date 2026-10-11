@@ -1,6 +1,7 @@
 #!/bin/bash
 # Executed on every VM boot via instance metadata
-# Fetches WordPress DB credentials from Secret Manager and injects them into wp-config.php
+# Fetches WordPress DB credentials from Secret Manager and injects them into wp-config.php,
+# then mounts the statics bucket at wp-content/uploads with Cloud Storage FUSE.
 #
 # The last step creates /run/wordpress-configured. health.php answers 200 only when that file
 # exists, so an instance where this script failed gets no traffic and is replaced by auto-healing.
@@ -55,6 +56,36 @@ content = content.replace('localhost',          '${DB_HOST}')
 with open('/var/www/html/wp-config.php', 'w') as f:
     f.write(content)
 PYEOF
+
+echo ">>> Mounting the statics bucket..."
+# The bucket name and the folder to mount come from the instance metadata (keys statics-bucket and
+# uploads-folder), set by Terraform from the same values it uses to create them, so the
+# image and this script work in any project. The mount is gone after a reboot and this script
+# runs again on every boot, so it is mounted here and not in /etc/fstab.
+#   --only-dir       mounts only the uploads folder of the bucket, not the whole bucket. The
+#                    statics bucket is laid out with one folder per kind of content, so uploads
+#                    are stored as uploads/2026/10/photo.jpg and other folders can be added later.
+#   --implicit-dirs  shows folders that exist only as a prefix of object names, for example
+#                    uploads copied straight into the bucket with gcloud when restoring a backup.
+#   -o allow_other   this script runs as root; Apache, as www-data, must be able to use the mount.
+#   --uid / --gid    files and folders appear owned by www-data, so WordPress can write uploads.
+# If the mount fails the script stops before the readiness marker, and the instance is replaced.
+STATICS_BUCKET=$(curl -sf "http://metadata.google.internal/computeMetadata/v1/instance/attributes/statics-bucket" -H "Metadata-Flavor: Google")
+UPLOADS_FOLDER=$(curl -sf "http://metadata.google.internal/computeMetadata/v1/instance/attributes/uploads-folder" -H "Metadata-Flavor: Google")
+UPLOADS_DIR="/var/www/html/wp-content/uploads"
+
+if ! mountpoint -q "$UPLOADS_DIR"; then
+  gcsfuse \
+    --only-dir "$UPLOADS_FOLDER" \
+    --implicit-dirs \
+    -o allow_other \
+    --uid "$(id -u www-data)" \
+    --gid "$(id -g www-data)" \
+    --file-mode 644 \
+    --dir-mode 755 \
+    "$STATICS_BUCKET" "$UPLOADS_DIR"
+fi
+mountpoint -q "$UPLOADS_DIR"
 
 echo ">>> Restarting Apache..."
 systemctl restart apache2

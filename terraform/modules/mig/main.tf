@@ -1,3 +1,11 @@
+locals {
+  template_metadata = merge(var.extra_metadata, {
+    "startup-script" = var.startup_script
+    "enable-oslogin" = "true"
+  })
+}
+
+
 # Instance template
 resource "google_compute_instance_template" "this" {
   name_prefix  = var.template_name_prefix
@@ -21,10 +29,9 @@ resource "google_compute_instance_template" "this" {
     subnetwork = var.subnetwork
   }
 
-  metadata = {
-    "startup-script" = var.startup_script
-    "enable-oslogin" = "true"
-  }
+  # Extra keys (for example the name of a bucket the startup script mounts) are readable on the
+  # instance through the metadata server, under instance/attributes/<key>.
+  metadata = local.template_metadata
 
   service_account {
     email  = var.service_account_email
