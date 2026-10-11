@@ -17,7 +17,11 @@ locals {
   # Cloud Storage
   db_backup_bucket_name = "${var.db_backup_bucket_base_name}-${var.project_id}"
   scripts_bucket_name   = "${var.scripts_bucket_base_name}-${var.project_id}"
-  uploads_bucket_name   = "${var.uploads_bucket_base_name}-${var.project_id}"
+
+  # Statics bucket: content WordPress writes at runtime, shared by every instance (today, uploads).
+  # A fixed name and not a variable on purpose. The bucket has one specific job, and
+  # configs/destroy.sh builds the same name to empty it: changing it here alone would break that.
+  statics_bucket_name = "wordpress-statics-${var.project_id}"
 
   # Access settings shared by every bucket, set here so no bucket can drift from them:
   # - uniform bucket-level access: permissions come from IAM only, no per-object ACLs.

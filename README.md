@@ -15,7 +15,7 @@ Production-grade WordPress infrastructure on Google Cloud Platform, fully provis
 
 ![Architecture Diagram](docs/architecture.jpeg)
 
-> **Outdated diagram:** it still shows the regional HTTP load balancer with its proxy-only subnet, and it does not show the uploads bucket mounted on the instances. The project now uses a global HTTPS load balancer and keeps WordPress uploads in Cloud Storage, as described below. An updated diagram will replace it shortly.
+> **Outdated diagram:** it still shows the regional HTTP load balancer with its proxy-only subnet, and it does not show the statics bucket mounted on the instances. The project now uses a global HTTPS load balancer and keeps WordPress uploads in Cloud Storage, as described below. An updated diagram will replace it shortly.
 
 ### Overview
 
@@ -59,13 +59,13 @@ A reserved IP is billed while no load balancer is using it. For a portfolio proj
 ### Stateless WordPress Instances
 Instances in a MIG are replaced at any time: auto-healing, a new image, scaling in. Anything written to their disks is lost, and a file written by one instance does not exist on the others. WordPress keeps writing two kinds of content at runtime, and each is handled differently:
 
-- **Uploads (media).** Stored in a Cloud Storage bucket (`wordpress-uploads-<project_id>`) that every instance mounts at `wp-content/uploads` with [Cloud Storage FUSE](https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/overview). An image uploaded through one instance is visible from all of them and survives their replacement. WordPress needs no plugin and no change: it writes to what looks like a local folder.
+- **Uploads (media).** Stored in the `uploads/` folder of the statics bucket (`wordpress-statics-<project_id>`), which every instance mounts at `wp-content/uploads` with [Cloud Storage FUSE](https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/overview). An image uploaded through one instance is visible from all of them and survives their replacement. WordPress needs no plugin and no change: it writes to what looks like a local folder.
 - **Plugins and themes.** Part of the image. `DISALLOW_FILE_MODS` stops the admin panel from installing, updating or editing them, since a change made there would exist on one instance only. A new plugin, or an update, is a new image and a rolling update.
 
 How the mount is wired:
 
 - The image only installs `gcsfuse` (pinned version, from Google's signed apt repository) and creates the mount point. It is the same image for any project.
-- The bucket name reaches the instances as instance metadata (`uploads-bucket`), set by Terraform from the same value that names the bucket. The startup script reads it from the metadata server and mounts the bucket on every boot.
+- The bucket name reaches the instances as instance metadata (`statics-bucket`), set by Terraform from the bucket it creates. The name itself is fixed in `locals.tf` and is not a variable: the bucket has one specific job, and `configs/destroy.sh` relies on the same name. The startup script reads it from the metadata server and mounts the `uploads/` folder of the bucket (`--only-dir`) on every boot. The bucket is laid out with one folder per kind of content, so other folders can be added without moving the uploads.
 - `gcsfuse` authenticates as the instance service account, which has `roles/storage.objectUser` on that bucket only. No service account keys.
 - The mount happens before the readiness marker, so an instance that fails to mount is reported unhealthy and replaced.
 - The bucket holds data: `force_destroy = false`, protected in the destructive change check, versioned (overwritten or deleted files kept for 30 days), and without a retention policy, which Cloud Storage FUSE cannot write to.
@@ -376,7 +376,7 @@ Both plan triggers list every resource the plan would destroy or replace, withou
 | No destroy or replace | Applies |
 | Replace of an instance template or an IAM binding | Applies — routine, no data involved |
 | Any other destroy or replace | Rejected unless `_ALLOW_DESTRUCTIVE=true` is passed |
-| Destroy or replace of the Cloud SQL instance, its database, the backup bucket or the uploads bucket | Always rejected |
+| Destroy or replace of the Cloud SQL instance, its database, the backup bucket or the statics bucket | Always rejected |
 
 To apply a plan with destructive changes after reviewing them:
 
@@ -395,7 +395,7 @@ The protected resources are listed in [cloudbuild/scripts/check_destructive.py](
 
 The pipeline cannot destroy the environment: the database and the data buckets are protected. Tear it down from Cloud Shell. [configs/destroy.sh](configs/destroy.sh) holds the gcloud steps that `terraform destroy` needs around it; it asks to type the project ID before changing anything.
 
-First empty the backup and uploads buckets. They keep `force_destroy = false` on purpose, so Terraform refuses to delete them while they hold objects, and their content is created by Cloud SQL and by WordPress, not by Terraform. This deletes the database exports and the uploads for good, all versions included:
+First empty the backup and statics buckets. They keep `force_destroy = false` on purpose, so Terraform refuses to delete them while they hold objects, and their content is created by Cloud SQL and by WordPress, not by Terraform. This deletes the database exports and the uploads for good, all versions included:
 
 ```bash
 bash configs/destroy.sh empty-buckets
@@ -516,7 +516,7 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 - `project_id` and the operator email excluded from version control — passed as Cloud Build substitutions (`TF_VAR_project_id`, `TF_VAR_iap_user_email`)
 - Cloud SQL instance has `deletion_protection` and `prevent_destroy` set to `false` for portfolio teardown convenience (set to `true` in production)
 - Least-privilege service accounts per workload (VM, function, scheduler)
-- Instances reach the uploads bucket with their own service account, scoped to that bucket; no service account keys
+- Instances reach the statics bucket with their own service account, scoped to that bucket; no service account keys
 - Custom IAM role for the backup function with only the required Cloud SQL permissions
 
 ---

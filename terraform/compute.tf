@@ -61,10 +61,10 @@ module "wordpress_regional_mig" {
   network              = module.vpc_prod.vpc_self_link
   subnetwork           = module.vpc_prod.subnet_id
   startup_script       = file("${path.root}/scripts/startup-prod.sh")
-  # Read by startup-prod.sh to mount the uploads bucket. The reference to the bucket resource
+  # Read by startup-prod.sh to mount the statics bucket. The reference to the bucket resource
   # also makes the instances wait until the bucket exists.
   extra_metadata = {
-    "uploads-bucket" = google_storage_bucket.uploads.name
+    "statics-bucket" = google_storage_bucket.statics.name
   }
   service_account_email = google_service_account.prod_vm.email
   tags                  = var.instance_template_tags

@@ -99,7 +99,6 @@ instance_disk_size_gb = 20
 # ==============================================================
 db_backup_bucket_base_name = "wordpress-db-backups"
 scripts_bucket_base_name   = "wordpress-fn-scripts"
-uploads_bucket_base_name   = "wordpress-uploads" # configs/destroy.sh builds the same name
 
 # ==============================================================
 # CLOUD FUNCTION

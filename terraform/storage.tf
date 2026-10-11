@@ -49,19 +49,21 @@ resource "google_storage_bucket" "scripts" {
 
 }
 
-# Bucket for WordPress uploads (media), mounted on every instance at wp-content/uploads with
-# Cloud Storage FUSE (gcsfuse). Uploads are the only content WordPress writes at runtime; keeping
-# them here makes the instances stateless: a file uploaded through one instance is visible from all
-# of them, and survives when the MIG replaces an instance.
+# Statics bucket: the content WordPress writes at runtime, kept outside the instances so they stay
+# stateless. It is laid out with one folder per kind of content. Today there is one, uploads/
+# (media): every instance mounts that folder at wp-content/uploads with Cloud Storage FUSE
+# (gcsfuse, --only-dir), so a file uploaded through one instance is visible from all of them, and
+# survives when the MIG replaces an instance.
 #
+# - The name is fixed in locals.tf, not a variable (see the comment there).
 # - Same region as the instances, for latency and to avoid inter-region traffic.
 # - force_destroy = false and protected in cloudbuild/scripts/check_destructive.py: it holds data.
 #   Empty it with configs/destroy.sh before terraform destroy.
 # - Versioning keeps deleted or overwritten files for 30 days.
 # - No retention policy: Cloud Storage FUSE cannot write to a bucket that has one.
-resource "google_storage_bucket" "uploads" {
+resource "google_storage_bucket" "statics" {
   depends_on    = [google_project_service.gcp_services]
-  name          = local.uploads_bucket_name
+  name          = local.statics_bucket_name
   location      = var.subnet_prod_region
   storage_class = "STANDARD"
   force_destroy = false

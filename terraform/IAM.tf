@@ -152,10 +152,10 @@ resource "google_project_iam_member" "prod_vm_log_writer" {
   member  = local.service_accounts.prod
 }
 
-# Read and write WordPress uploads in the uploads bucket, mounted with Cloud Storage FUSE.
+# Read and write WordPress uploads in the statics bucket, mounted with Cloud Storage FUSE.
 # roles/storage.objectUser on that bucket only: create, read and delete objects, nothing else.
-resource "google_storage_bucket_iam_member" "prod_vm_uploads_user" {
-  bucket = google_storage_bucket.uploads.name
+resource "google_storage_bucket_iam_member" "prod_vm_statics_user" {
+  bucket = google_storage_bucket.statics.name
   role   = "roles/storage.objectUser"
   member = local.service_accounts.prod
 }
@@ -169,7 +169,7 @@ resource "time_sleep" "prod_vm_iam_propagation" {
   depends_on = [
     google_secret_manager_secret_iam_member.prod_vm_secret_access,
     google_project_iam_member.prod_vm_log_writer,
-    google_storage_bucket_iam_member.prod_vm_uploads_user,
+    google_storage_bucket_iam_member.prod_vm_statics_user,
   ]
 }
 
