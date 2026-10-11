@@ -23,6 +23,11 @@ locals {
   # configs/destroy.sh builds the same name to empty it: changing it here alone would break that.
   statics_bucket_name = "wordpress-statics-${var.project_id}"
 
+  # Folder of the statics bucket that holds the uploads. Defined once here: Terraform creates the
+  # folder from it (storage.tf) and passes it to the instances as metadata (compute.tf), and the
+  # startup script mounts whatever folder it is given. No trailing slash.
+  statics_uploads_folder = "uploads"
+
   # Access settings shared by every bucket, set here so no bucket can drift from them:
   # - uniform bucket-level access: permissions come from IAM only, no per-object ACLs.
   #   IAM conditions on buckets (IAM.tf, function build SA) require it.

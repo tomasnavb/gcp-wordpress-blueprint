@@ -58,10 +58,11 @@ with open('/var/www/html/wp-config.php', 'w') as f:
 PYEOF
 
 echo ">>> Mounting the statics bucket..."
-# The bucket name comes from the instance metadata (key statics-bucket), set by Terraform, so the
+# The bucket name and the folder to mount come from the instance metadata (keys statics-bucket and
+# uploads-folder), set by Terraform from the same values it uses to create them, so the
 # image and this script work in any project. The mount is gone after a reboot and this script
 # runs again on every boot, so it is mounted here and not in /etc/fstab.
-#   --only-dir       mounts only the uploads/ folder of the bucket, not the whole bucket. The
+#   --only-dir       mounts only the uploads folder of the bucket, not the whole bucket. The
 #                    statics bucket is laid out with one folder per kind of content, so uploads
 #                    are stored as uploads/2026/10/photo.jpg and other folders can be added later.
 #   --implicit-dirs  shows folders that exist only as a prefix of object names, for example
@@ -70,11 +71,12 @@ echo ">>> Mounting the statics bucket..."
 #   --uid / --gid    files and folders appear owned by www-data, so WordPress can write uploads.
 # If the mount fails the script stops before the readiness marker, and the instance is replaced.
 STATICS_BUCKET=$(curl -sf "http://metadata.google.internal/computeMetadata/v1/instance/attributes/statics-bucket" -H "Metadata-Flavor: Google")
+UPLOADS_FOLDER=$(curl -sf "http://metadata.google.internal/computeMetadata/v1/instance/attributes/uploads-folder" -H "Metadata-Flavor: Google")
 UPLOADS_DIR="/var/www/html/wp-content/uploads"
 
 if ! mountpoint -q "$UPLOADS_DIR"; then
   gcsfuse \
-    --only-dir uploads \
+    --only-dir "$UPLOADS_FOLDER" \
     --implicit-dirs \
     -o allow_other \
     --uid "$(id -u www-data)" \

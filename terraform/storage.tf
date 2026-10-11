@@ -86,6 +86,23 @@ resource "google_storage_bucket" "statics" {
   }
 }
 
+# Marker object that makes uploads/ exist as a folder in the statics bucket.
+# Cloud Storage has no real folders in a bucket like this one: a folder is an object whose name
+# ends in "/". The instances mount only that folder (gcsfuse --only-dir), and gcsfuse does
+# not create it on its own, so it has to exist before the first instance boots. --implicit-dirs
+# does not cover this case: it infers a folder from the objects inside it, and a new bucket is empty.
+# The provider requires non-empty content; it is ignored.
+resource "google_storage_bucket_object" "uploads_folder" {
+  bucket = google_storage_bucket.statics.name
+
+  # The folder name comes from the same local that is passed to the instances as metadata, so the
+  # folder created here and the folder they mount cannot differ.
+  # The trailing slash is required: it is what makes the object a folder.
+  name = "${local.statics_uploads_folder}/"
+
+  content = " "
+}
+
 # Archive the Cloud Function source code
 data "archive_file" "function_zip" {
   type        = "zip"
