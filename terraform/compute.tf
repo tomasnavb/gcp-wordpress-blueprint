@@ -47,6 +47,7 @@ module "wordpress_regional_mig" {
   depends_on = [
     google_storage_bucket_object.uploads_folder,
     google_secret_manager_secret_version.wordpress_secrets,
+    google_secret_manager_secret_version.db_password,
     time_sleep.prod_vm_iam_propagation,
     google_sql_database.wordpress_db,
     google_sql_user.wordpress_app_user,
@@ -63,11 +64,15 @@ module "wordpress_regional_mig" {
   network              = module.vpc_prod.vpc_self_link
   subnetwork           = module.vpc_prod.subnet_id
   startup_script       = file("${path.root}/scripts/startup-prod.sh")
-  # Read by startup-prod.sh to mount the uploads folder of the statics bucket. The reference to the bucket resource
-  # also makes the instances wait until the bucket exists.
+  # statics-bucket and uploads-folder are read by startup-prod.sh to mount the uploads folder of the
+  # statics bucket; the reference to the bucket resource also makes the instances wait until it exists.
+  # db-password-version is not read by anything: it is here so that rotating the password changes
+  # the instance template, which makes the MIG replace the instances. They only read the password
+  # at boot, so without a replacement they would keep the old one and lose the database.
   extra_metadata = {
-    "statics-bucket" = google_storage_bucket.statics.name
-    "uploads-folder" = local.statics_uploads_folder
+    "statics-bucket"      = google_storage_bucket.statics.name
+    "uploads-folder"      = local.statics_uploads_folder
+    "db-password-version" = tostring(var.db_password_version)
   }
   service_account_email = google_service_account.prod_vm.email
   tags                  = var.instance_template_tags

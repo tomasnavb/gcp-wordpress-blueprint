@@ -93,6 +93,9 @@ instance_region       = "europe-west1"
 instance_tier         = "db-custom-2-4096"
 instance_disk_size_gb = 20
 
+# Raise by one to rotate the database password (see "Rotate the database password" in the README).
+db_password_version = 1
+
 # ==============================================================
 # STORAGE
 # Final bucket names are: <base_name>-<project_id>  (see locals.tf)

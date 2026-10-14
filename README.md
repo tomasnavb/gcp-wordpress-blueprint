@@ -104,7 +104,20 @@ Two details shaped how those roles are granted:
 - **IAM bindings take time to propagate.** Created in the same apply as the function, they are not effective yet when the build starts a few seconds later, and the build fails for lack of a permission that is already granted. A 120-second wait (`time_sleep`) sits between the bindings and the function.
 
 ### Secret Manager for Credentials
-WordPress database credentials (`db-name`, `db-user`, `db-password`, `db-host`, `db-instance-connection`) are stored as secrets and read by the MIG instances at startup via the startup script. The production VM service account has `roles/secretmanager.secretAccessor` on each secret individually (least privilege).
+WordPress database credentials (`db-name`, `db-user`, `db-password`, `db-host`, `db-instance-connection`) are stored as secrets and read by the MIG instances at startup via the startup script, which writes them into `wp-config.php` on the instance. The production VM service account has `roles/secretmanager.secretAccessor` on each secret individually (least privilege).
+
+**The database password never reaches the Terraform state or a saved plan.** Both are files in a bucket, and a secret stored in them is a secret stored outside Secret Manager. Terraform generates and delivers the password with ephemeral resources and write-only arguments:
+
+```
+ephemeral random_password ──► Secret Manager ──(ephemeral read)──► Cloud SQL user
+     generated per run        secret_data_wo                        password_wo
+```
+
+- An **ephemeral resource** exists only while Terraform runs: its value is used and discarded.
+- A **write-only argument** is sent to the API and not stored. Terraform cannot tell whether it changed, so each one comes with a version number, and the value is sent again only when that number changes.
+- **Secret Manager is the source of truth.** The Cloud SQL user takes the password from the secret, not from the generator, so the two always hold the same value, even if an apply fails halfway. It is read with an `ephemeral` block and not a `data` source, which would store it in the state.
+
+The other four values (database name, user, host and connection string) are not sensitive and are stored as regular secret versions. See [Rotate the database password](#rotate-the-database-password) for how the version number is used.
 
 ---
 
@@ -477,6 +490,24 @@ View exports:
 gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 ```
 
+### Rotate the database password
+
+The password is written only when `db_password_version` changes, so rotating it is raising that number by one in `terraform/terraform.tfvars`, through a pull request like any other change:
+
+```hcl
+db_password_version = 2
+```
+
+The plan generated on `main` then shows three changes:
+
+- A new version of the `wordpress-db-password` secret, with a newly generated password.
+- The Cloud SQL user updated with that password.
+- The instance template replaced, because the version number is part of the instance metadata. The MIG replaces the instances, and the new ones read the new password at boot.
+
+If the plan replaces the secret version, the apply reports it as a destructive change and needs `_ALLOW_DESTRUCTIVE=true` after reviewing it.
+
+This is not a zero-downtime rotation: between the moment the password changes in Cloud SQL and the moment an instance is replaced, that instance cannot connect to the database. Avoiding that takes two passwords valid at the same time, which this project does not implement.
+
 ### Update the WordPress image
 
 1. Modify provisioning scripts in `packer/scripts/`
@@ -512,7 +543,7 @@ gcloud storage ls gs://wordpress-db-backups-YOUR_PROJECT_ID/exports/
 - Backends accept traffic only from the Google front end ranges, not from the internet
 - Cloud SQL is accessible only via private IP within the VPC
 - SSH access exclusively through IAP (no open port 22 to the internet)
-- Database credentials stored in Secret Manager, never in environment variables or files
+- Database credentials stored in Secret Manager. The password is never in the repository, the Terraform state or a saved plan; on an instance it exists only in `wp-config.php`, written at boot by the startup script
 - `project_id` and the operator email are not written in the code or the configuration — they are passed as Cloud Build substitutions (`TF_VAR_project_id`, `TF_VAR_iap_user_email`), so the repository deploys to any project without being edited. The project ID is an identifier, not a credential, and appears in the screenshots below
 - Cloud SQL instance has `deletion_protection` and `prevent_destroy` set to `false` for portfolio teardown convenience (set to `true` in production)
 - Least-privilege service accounts per workload (VM, function, scheduler)

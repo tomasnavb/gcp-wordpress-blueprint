@@ -37,7 +37,7 @@ In priority order.
 
 | ID | Task | Created | Status | Detail |
 |---|---|---|---|---|
-| T10 | Remove the database password from the Terraform state and the saved plans, with ephemeral resources and write-only arguments; rotate it afterwards | 2026-10-09 | `pending` | Devlog 10-08, priority 3 |
+| T10 | Database password out of the Terraform state and the saved plans, with ephemeral resources and write-only arguments. Implemented on 2026-10-11 with Secret Manager as the source of truth; to confirm on a clean deploy: the same value reaches the secret and the SQL user, the ephemeral read waits for the secret on the first apply, the state and a saved plan do not contain the password, and a rotation replaces the instances | 2026-10-09 | `unverified` | Devlog 10-08, priority 3 |
 | T11 | WordPress keys and salts defined in `wp-config.php` from Secret Manager, with the same pattern as T10 | 2026-10-08 | `pending` | Devlog 10-08, 22 |
 
 ### 3. What the README claims and the code does not do

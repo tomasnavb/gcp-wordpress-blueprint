@@ -9,7 +9,7 @@ terraform {
     }
     random = {
       source  = "hashicorp/random"
-      version = "~> 3.6"
+      version = "~> 3.7" # 3.7 is the first version with the ephemeral random_password
     }
     archive = {
       source  = "hashicorp/archive"
