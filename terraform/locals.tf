@@ -44,12 +44,23 @@ locals {
   scheduler_snapshot_schedule    = "0 */4 * * *" # Every 4 hours
   scheduler_fn_backup_type       = { standard = "export", fast = "snapshot" }
 
-  secrets = {
+  # Secret Manager
+  # The secret names are read by name in terraform/scripts/startup-prod.sh and startup-mgmt.sh:
+  # do not rename one here without changing it there.
+
+  # Values that are not sensitive. They are stored as regular secret versions.
+  secret_values = {
     "wordpress-db-name"                = var.db_name
     "wordpress-db-user"                = var.db_user
-    "wordpress-db-password"            = random_password.db_password.result
     "wordpress-db-host"                = google_sql_database_instance.main.private_ip_address
     "wordpress-db-instance-connection" = google_sql_database_instance.main.connection_name
   }
+
+  # The database password is not in the map above on purpose: it is an ephemeral value, which
+  # cannot go through a for_each, and it is written with a write-only argument (secrets.tf).
+  db_password_secret_name = "wordpress-db-password"
+
+  # Every secret container: the ones above plus the password. IAM.tf grants access over all of them.
+  secret_names = concat(keys(local.secret_values), [local.db_password_secret_name])
 
 }

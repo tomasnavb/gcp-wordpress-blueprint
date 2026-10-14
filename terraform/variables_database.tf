@@ -59,3 +59,13 @@ variable "db_user" {
   type        = string
   default     = "wordpress"
 }
+
+variable "db_password_version" {
+  description = "Version of the database password. Raise it by one to rotate the password: a new one is generated, written to Secret Manager and set on the Cloud SQL user, and the instances are replaced so they read it"
+  type        = number
+
+  validation {
+    condition     = var.db_password_version >= 1 && floor(var.db_password_version) == var.db_password_version
+    error_message = "db_password_version must be a whole number, 1 or greater."
+  }
+}
