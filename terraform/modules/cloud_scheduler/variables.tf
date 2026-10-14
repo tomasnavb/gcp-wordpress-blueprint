@@ -24,7 +24,7 @@ variable "backup_fn_uri" {
 }
 
 variable "fn_backup_type" {
-  description = "Backup type sent in the request body to the function: 'export' (90-day retention) or 'snapshot' (7-day retention)"
+  description = "Backup type sent in the request body to the function: 'export' (SQL export to Cloud Storage) or 'snapshot' (on-demand Cloud SQL backup)"
   type        = string
 }
 
