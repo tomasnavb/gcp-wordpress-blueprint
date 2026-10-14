@@ -34,8 +34,11 @@ resource "google_cloudfunctions2_function" "db_backup_fn" {
 
 }
 
-/* Cloud Scheduler jobs to trigger Cloud Function for CloudSQL backups - Export backup for 90 days retention and Snapshot backup
-every 4 hours for 7 days retention for point-in-time recovery. Using default time-zone setted on UTC+1 (Western Europe time zone)*/
+/* Cloud Scheduler jobs that trigger the Cloud Function for CloudSQL backups:
+- Export: daily, to the backup bucket, where a lifecycle rule deletes it after 90 days.
+- Snapshot: an on-demand Cloud SQL backup every 4 hours. Cloud SQL does not delete on-demand backups
+  and nothing here does either yet, so they accumulate (docs/to-do.md, T13).
+Schedules are evaluated in var.time_zone (Europe/Paris in terraform.tfvars). */
 
 module "export_db_scheduler" {
   depends_on = [google_project_service.gcp_services]
@@ -66,7 +69,7 @@ module "snapshot_db_scheduler" {
   description                   = local.scheduler_snapshot_description
   schedule                      = local.scheduler_snapshot_schedule # Every 4 hours
   backup_fn_uri                 = google_cloudfunctions2_function.db_backup_fn.url
-  fn_backup_type                = local.scheduler_fn_backup_type.fast # Fast for snapshot backup for 7 days retention
+  fn_backup_type                = local.scheduler_fn_backup_type.fast # Fast: on-demand snapshot backup, no retention yet
   invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
   http_method                   = var.http_method
   min_backoff_duration          = var.min_backoff_duration

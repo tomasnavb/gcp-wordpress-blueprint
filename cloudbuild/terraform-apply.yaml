@@ -52,7 +52,7 @@ steps:
         terraform show -json tfplan > plan.json
 
   # Block the apply if the plan destroys or replaces resources and _ALLOW_DESTRUCTIVE is not "true".
-  # Protected resources (database, backup bucket) are blocked regardless of the flag.
+  # Protected resources (Cloud SQL instance and database, backup and statics buckets) are blocked regardless of the flag.
   # See scripts/check_destructive.py for details.
   - id: "enforce-destructive-changes"
     name: "python:3.12-alpine"

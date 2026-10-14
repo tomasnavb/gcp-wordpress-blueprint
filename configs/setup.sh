@@ -225,7 +225,7 @@ fi
 
 # Packer trigger — fires on push to main only when packer/ files change.
 # Builds a new golden image and registers it under the wordpress-golden image family.
-# NOT triggered on PRs — Packer creates real GCP resources and takes 10-15 minutes.
+# NOT triggered on PRs — Packer creates real GCP resources and takes about 5 minutes.
 # _USE_IAP=true: the build VM has no external IP and Packer connects through an IAP tunnel.
 # This needs the management VPC, so the trigger only works after the first terraform apply.
 gcloud builds triggers create github \

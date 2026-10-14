@@ -83,7 +83,7 @@ substitutions:
   _PACKER_VERSION: '1.16.1'
   _PACKER_SHA256: 'af38a9e93e4ed1b9ca68206ae969c64c300c82a3dde46a780dfa629f0867f651'
 
-# Packer builds can take 10-15 minutes depending on apt-get and WordPress download speed
+# Packer builds take about 5 minutes (4 min 22 s measured on 2026-10-11), depending on apt-get and WordPress download speed
 timeout: '3600s'
 
 options:
