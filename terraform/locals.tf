@@ -1,7 +1,30 @@
 locals {
+  # Naming convention (docs: architecture style guide): [project]-[component]-[environment], lowercase,
+  # hyphens only, region at the end of subnet names only. Names are built here and not exposed as
+  # variables: each has one job, and scripts outside Terraform rely on some of them.
+  name_prefix = "wp-blueprint"
+
+  # Networking
+  vpc_name                  = "${local.name_prefix}-vpc-${var.environment}"
+  web_subnet_name           = "web-subnet-${var.environment}-${var.project_region}"
+  build_subnet_name         = "build-subnet-${var.environment}-${var.project_region}"
+  router_name               = "${local.name_prefix}-router-${var.environment}"
+  nat_name                  = "${local.name_prefix}-nat-${var.environment}"
+  psa_range_name            = "${local.name_prefix}-psa-range-${var.environment}"
+  fw_iap_ssh_web_name       = "${local.name_prefix}-allow-iap-ssh-${var.environment}"
+  fw_iap_ssh_build_name     = "${local.name_prefix}-allow-iap-ssh-build-${var.environment}"
+  fw_deny_build_to_psa_name = "${local.name_prefix}-deny-build-to-psa-${var.environment}"
+
+  # Network tags. The web tag is also set on the instances (instance_template_tags in terraform.tfvars),
+  # the build tag on the Packer VM (packer/wordpress.pkr.hcl).
+  web_ssh_network_tag = "iap-ssh-access"
+  build_network_tag   = "packer-build"
+
+  # Source range of IAP TCP forwarding, fixed by Google.
+  iap_source_range = "35.235.240.0/20"
+
   # Service accounts
   service_accounts = {
-    mgmt         = "serviceAccount:${google_service_account.mgmt_vm.email}"
     prod         = "serviceAccount:${google_service_account.prod_vm.email}"
     sql_instance = "serviceAccount:${google_sql_database_instance.main.service_account_email_address}"
     fn           = "serviceAccount:${google_service_account.cloudsql_backup_fn.email}"
@@ -10,7 +33,6 @@ locals {
   }
 
   # Virtual machines
-  source_image = "projects/${var.project_id}/global/images/family/wordpress-golden"
   disk_size_gb = 10
   disk_type    = "pd-standard"
 
@@ -36,16 +58,13 @@ locals {
   bucket_public_access_prevention = "enforced"
 
   # Cloud Scheduler
-  scheduler_export_name          = "export-db-backup"
-  scheduler_export_description   = "Cloud Scheduler job to trigger Cloud Function for CloudSQL export backup"
-  scheduler_export_schedule      = "0 0 * * *" # Daily at midnight
-  scheduler_snapshot_name        = "snapshot-db-backup"
-  scheduler_snapshot_description = "Cloud Scheduler job to trigger Cloud Function for CloudSQL snapshot backup"
-  scheduler_snapshot_schedule    = "0 */4 * * *" # Every 4 hours
-  scheduler_fn_backup_type       = { standard = "export", fast = "snapshot" }
+  scheduler_export_name        = "export-db-backup"
+  scheduler_export_description = "Cloud Scheduler job to trigger Cloud Function for CloudSQL export backup"
+  scheduler_export_schedule    = "0 0 * * *" # Daily at midnight
+  scheduler_export_backup_type = "export"    # Request body type the function expects
 
   # Secret Manager
-  # The secret names are read by name in terraform/scripts/startup-prod.sh and startup-mgmt.sh:
+  # The secret names are read by name in terraform/scripts/startup-prod.sh:
   # do not rename one here without changing it there.
 
   # Values that are not sensitive. They are stored as regular secret versions.

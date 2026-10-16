@@ -64,7 +64,7 @@ resource "google_storage_bucket" "scripts" {
 resource "google_storage_bucket" "statics" {
   depends_on    = [google_project_service.gcp_services]
   name          = local.statics_bucket_name
-  location      = var.subnet_prod_region
+  location      = var.project_region
   storage_class = "STANDARD"
   force_destroy = false
 

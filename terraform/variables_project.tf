@@ -3,6 +3,16 @@ variable "project_id" {
   type        = string
 }
 
+variable "environment" {
+  description = "Environment of this deployment. Part of every resource name (see locals.tf)"
+  type        = string
+
+  validation {
+    condition     = contains(["dev", "prod"], var.environment)
+    error_message = "environment must be dev or prod."
+  }
+}
+
 variable "project_region" {
   description = "Default GCP region for the project"
   type        = string
@@ -14,7 +24,7 @@ variable "project_zone" {
 }
 
 variable "iap_user_email" {
-  description = "Google account email granted IAP tunnel access for SSH into the management VM"
+  description = "Google account email granted IAP tunnel access for SSH into the WordPress instances"
   type        = string
 
   # Fail at plan time: an invalid IAM member is otherwise only rejected halfway through the apply.

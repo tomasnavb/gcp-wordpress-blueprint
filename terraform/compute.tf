@@ -1,32 +1,3 @@
-resource "google_compute_instance" "management" {
-  name         = var.vm_mgmt_name
-  machine_type = var.vm_mgmt_machine_type
-  tags         = ["iap-ssh-access"]
-
-  network_interface {
-    network    = module.vpc_mgmt.vpc_self_link
-    subnetwork = module.vpc_mgmt.subnet_id
-    stack_type = "IPV4_ONLY"
-  }
-
-  boot_disk {
-    initialize_params {
-      image = local.source_image
-      size  = local.disk_size_gb
-      type  = local.disk_type
-    }
-  }
-
-  metadata = {
-    "startup-script" = file("${path.root}/scripts/startup-mgmt.sh")
-  }
-
-  service_account {
-    email  = google_service_account.mgmt_vm.email
-    scopes = ["cloud-platform"]
-  }
-}
-
 # Latest image of the wordpress-golden family, resolved to a concrete image on every plan.
 # The family URL alone never changes, so Terraform would not notice a new Packer build.
 # With the concrete image, a new build shows up as an instance template replacement and
@@ -53,7 +24,7 @@ module "wordpress_regional_mig" {
     google_sql_user.wordpress_app_user,
   ]
 
-  region = var.subnet_prod_region
+  region = var.project_region
 
   # Instance template
   template_name_prefix = var.instance_template_name_prefix
@@ -61,8 +32,8 @@ module "wordpress_regional_mig" {
   source_image         = data.google_compute_image.wordpress_golden.self_link
   disk_size_gb         = local.disk_size_gb
   disk_type            = local.disk_type
-  network              = module.vpc_prod.vpc_self_link
-  subnetwork           = module.vpc_prod.subnet_id
+  network              = module.vpc.network_self_link
+  subnetwork           = module.vpc.subnets["${var.project_region}/${local.web_subnet_name}"].id
   startup_script       = file("${path.root}/scripts/startup-prod.sh")
   # statics-bucket and uploads-folder are read by startup-prod.sh to mount the uploads folder of the
   # statics bucket; the reference to the bucket resource also makes the instances wait until it exists.
@@ -116,7 +87,7 @@ module "global_external_lb" {
   # Firewall rule that lets the Google front ends reach the backends (health checks and proxied traffic).
   # Only the backend tag: the template also carries "iap-ssh-access", which is unrelated to the LB.
   project_id          = var.project_id
-  network_self_link   = module.vpc_prod.vpc_self_link
+  network_self_link   = module.vpc.network_self_link
   backend_target_tags = ["backend-service"]
 
   # Backend: the MIG and the named port it serves on
