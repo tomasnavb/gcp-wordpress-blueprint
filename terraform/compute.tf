@@ -1,32 +1,3 @@
-resource "google_compute_instance" "management" {
-  name         = var.vm_mgmt_name
-  machine_type = var.vm_mgmt_machine_type
-  tags         = ["iap-ssh-access"]
-
-  network_interface {
-    network    = module.vpc_mgmt.vpc_self_link
-    subnetwork = module.vpc_mgmt.subnet_id
-    stack_type = "IPV4_ONLY"
-  }
-
-  boot_disk {
-    initialize_params {
-      image = local.source_image
-      size  = local.disk_size_gb
-      type  = local.disk_type
-    }
-  }
-
-  metadata = {
-    "startup-script" = file("${path.root}/scripts/startup-mgmt.sh")
-  }
-
-  service_account {
-    email  = google_service_account.mgmt_vm.email
-    scopes = ["cloud-platform"]
-  }
-}
-
 # Latest image of the wordpress-golden family, resolved to a concrete image on every plan.
 # The family URL alone never changes, so Terraform would not notice a new Packer build.
 # With the concrete image, a new build shows up as an instance template replacement and

@@ -16,17 +16,6 @@ subnet_prod_name          = "wordpress-prod-subnet"
 subnet_prod_region        = "europe-west1"
 subnet_prod_ip_cidr_range = "10.0.0.0/24"
 
-vpc_mgmt_name             = "wordpress-mgmt-vpc"
-subnet_mgmt_name          = "wordpress-mgmt-subnet"
-subnet_mgmt_region        = "europe-west1"
-subnet_mgmt_ip_cidr_range = "192.168.1.0/24"
-
-# ==============================================================
-# COMPUTE — MANAGEMENT VM
-# ==============================================================
-vm_mgmt_name         = "wordpress-mgmt-vm"
-vm_mgmt_machine_type = "e2-medium"
-
 # ==============================================================
 # COMPUTE — MIG (Production)
 # ==============================================================

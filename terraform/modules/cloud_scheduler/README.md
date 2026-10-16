@@ -25,7 +25,7 @@ No modules.
 | <a name="input_attempt_deadline"></a> [attempt\_deadline](#input\_attempt\_deadline) | Time limit for a single HTTP attempt before it is considered failed (e.g. 60s) | `string` | n/a | yes |
 | <a name="input_backup_fn_uri"></a> [backup\_fn\_uri](#input\_backup\_fn\_uri) | HTTPS trigger URL of the Cloud Function to invoke | `string` | n/a | yes |
 | <a name="input_description"></a> [description](#input\_description) | Human-readable description for the Cloud Scheduler job | `string` | n/a | yes |
-| <a name="input_fn_backup_type"></a> [fn\_backup\_type](#input\_fn\_backup\_type) | Backup type sent in the request body to the function: 'export' (SQL export to Cloud Storage) or 'snapshot' (on-demand Cloud SQL backup) | `string` | n/a | yes |
+| <a name="input_fn_backup_type"></a> [fn\_backup\_type](#input\_fn\_backup\_type) | Backup type sent in the request body to the function: 'export' (SQL export to Cloud Storage) | `string` | n/a | yes |
 | <a name="input_http_method"></a> [http\_method](#input\_http\_method) | HTTP method used when invoking the Cloud Function (POST) | `string` | n/a | yes |
 | <a name="input_invoker_service_account_email"></a> [invoker\_service\_account\_email](#input\_invoker\_service\_account\_email) | Email of the service account used in the OIDC token to authenticate the HTTP call to the Cloud Function | `string` | n/a | yes |
 | <a name="input_max_backoff_duration"></a> [max\_backoff\_duration](#input\_max\_backoff\_duration) | Maximum wait time between retry attempts (e.g. 60s) | `string` | n/a | yes |

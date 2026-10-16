@@ -17,9 +17,10 @@ BACKUP_BUCKET = os.getenv("BACKUP_BUCKET_NAME")
 @functions_framework.http
 def run_backup(request):
     request_json = request.get_json(silent=True) or {}
-    backup_type = request_json.get("type", "both")
+    backup_type = request_json.get("type", "export")
 
-    allowed_types = {"snapshot", "export", "both"}
+    # Only exports: point-in-time recovery comes from the instance's automated backups and binary logs.
+    allowed_types = {"export"}
     if backup_type not in allowed_types:
         return json.dumps({
             "status": "failed",
@@ -29,11 +30,7 @@ def run_backup(request):
     results = {}
 
     try:
-        if backup_type in ("snapshot", "both"):
-            results["snapshot"] = create_backup_snapshot()
-
-        if backup_type in ("export", "both"):
-            results["export"] = create_export()
+        results["export"] = create_export()
 
         logger.info(f"Backup started: {json.dumps(results)}")
         return json.dumps({"status": "success", "result": results}), 200
@@ -48,25 +45,6 @@ def run_backup(request):
     except Exception as e:
         logger.error(f"Backup failed: {e}")
         return json.dumps({"status": "failed", "message": str(e)}), 500
-
-
-def create_backup_snapshot():
-    service = build("sqladmin", "v1beta4", cache_discovery=False)
-
-    body = {
-        "kind": "sql#backupRun",
-        "description": f"Automated snapshot - {datetime.utcnow().isoformat()}",
-    }
-
-    response = service.backupRuns().insert(
-        project=PROJECT_ID,
-        instance=INSTANCE_NAME,
-        body=body,
-    ).execute()
-
-    operation_id = response.get("name")
-    logger.info(f"Backup snapshot started: {operation_id}")
-    return {"operation_id": operation_id, "status": "started"}
 
 
 def create_export():

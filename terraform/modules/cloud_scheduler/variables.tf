@@ -24,7 +24,7 @@ variable "backup_fn_uri" {
 }
 
 variable "fn_backup_type" {
-  description = "Backup type sent in the request body to the function: 'export' (SQL export to Cloud Storage) or 'snapshot' (on-demand Cloud SQL backup)"
+  description = "Backup type sent in the request body to the function: 'export' (SQL export to Cloud Storage)"
   type        = string
 }
 

@@ -7,7 +7,7 @@ variable "function_name" {
 variable "function_description" {
   description = "Human-readable description for the Cloud Function"
   type        = string
-  default     = "Manages CloudSQL export and snapshot backups to Cloud Storage"
+  default     = "Exports the CloudSQL database to Cloud Storage"
 }
 
 variable "function_region" {
@@ -21,7 +21,7 @@ variable "function_timeout_sec" {
   default     = 600
 }
 
-# Cloud Scheduler (shared by both export and snapshot jobs)
+# Cloud Scheduler
 variable "time_zone" {
   description = "Time zone for the Cloud Scheduler cron expressions (e.g. Europe/Paris)"
   type        = string

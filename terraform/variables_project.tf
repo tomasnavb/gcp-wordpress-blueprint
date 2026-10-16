@@ -14,7 +14,7 @@ variable "project_zone" {
 }
 
 variable "iap_user_email" {
-  description = "Google account email granted IAP tunnel access for SSH into the management VM"
+  description = "Google account email granted IAP tunnel access for SSH into the WordPress instances"
   type        = string
 
   # Fail at plan time: an invalid IAM member is otherwise only rejected halfway through the apply.

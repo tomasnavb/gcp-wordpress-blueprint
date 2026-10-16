@@ -21,7 +21,6 @@ locals {
     "cloudscheduler.googleapis.com", # Cloud Scheduler API
 
     # --- Networking and Connectivity ---
-    "vpcaccess.googleapis.com",         # Serverless VPC Access (for private DB connections)
     "servicenetworking.googleapis.com", # Service Peering for Cloud SQL/Managed Services
     "iap.googleapis.com",               # Identity-Aware Proxy
 
@@ -45,6 +44,4 @@ resource "google_project_service" "gcp_services" {
  * TECHNICAL ARCHITECTURE NOTES:
  * 1. Artifact Registry is required for GCF v2 to store the built container images.
  * 2. Cloud Build is the engine that transforms Python code into executable artifacts.
- * 3. VPC Access Connector allows serverless functions to communicate with private 
- * PostgreSQL or MongoDB instances without exposing them to the public internet.
  */
