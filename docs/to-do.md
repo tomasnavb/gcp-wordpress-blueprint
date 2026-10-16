@@ -13,11 +13,40 @@ Single list of the project's tasks and their status. It replaces the task tables
 | `done` | Confirmed in a real deploy, or finished if it needs no deploy |
 | `dropped` | Decided not to do |
 
-Last updated: 2026-10-11.
+Last updated: 2026-10-16.
 
 ## Open
 
 In priority order.
+
+### 0. Refactor: naming convention, network and pipeline identities
+
+Applies the naming convention of the architecture style guide (`[project]-[component]-[environment]`, short project name `wp-blueprint`, region only in subnet names, service accounts without environment), removes the management VPC (T31), adds a dedicated subnet for the image build and splits the pipeline service account (T35). Done on a clean deploy: nothing is deployed while it is in progress. Task IDs `R..` belong to this block.
+
+| ID | Task | Created | Status | Detail |
+|---|---|---|---|---|
+| R01 | Variable `environment` (validated to `dev` or `prod`) and local `name_prefix = "wp-blueprint"`; every resource name built in `locals.tf`. Remove the per-resource name variables from `variables_*.tf` and `terraform.tfvars` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R02 | Replace the local `networking` module with the official Google modules, pinned to exact versions: `terraform-google-modules/network/google` (VPC, subnets, firewall rules) and `terraform-google-modules/cloud-router/google` (Cloud Router and Cloud NAT). Delete `terraform/modules/networking` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R03 | Rename networking: `wp-blueprint-vpc-prod`, `web-subnet-prod-europe-west1`, `wp-blueprint-router-prod`, `wp-blueprint-nat-prod`, `wp-blueprint-allow-iap-ssh-prod`, `wp-blueprint-psa-range-prod` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R04 | Rename compute: template prefix `wp-blueprint-web-tpl-prod-`, `wp-blueprint-web-mig-prod`, instances `wp-blueprint-web-prod`, `wp-blueprint-web-autoscaler-prod`, `wp-blueprint-web-hc-prod` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R05 | Rename the load balancer: remove the `-global-external-lb` suffix from the module, every name `wp-blueprint-lb-*-prod` (IP `wp-blueprint-lb-ip-prod`, also in `configs/setup.sh`), firewall `wp-blueprint-allow-google-fe-prod` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R06 | Rename data: `wp-blueprint-db-prod`, secrets `wp-blueprint-db-{name,user,password,host,connection}-prod`, buckets `<project_id>-statics`, `<project_id>-db-backups`, `<project_id>-fn-source`, function `wp-blueprint-db-backup-fn-prod`, job `wp-blueprint-db-export-job-prod`, custom role `wpBlueprintDbBackup` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R07 | Rename workload service accounts: `web-vm-sa`, `db-backup-fn-sa`, `db-backup-build-sa`, `scheduler-invoker-sa` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R08 | Image: family `wp-blueprint-web`, image `wp-blueprint-web-{{timestamp}}`, in the Packer template and the image data source | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R09 | State: bucket `<project_id>-tfstate` and backend prefix `wp-blueprint/prod`, in `configs/setup.sh`, both Terraform pipelines and the README | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R10 | Triggers: `wp-blueprint-image-build-prod`, `wp-blueprint-tf-plan-pr-prod`, `wp-blueprint-tf-plan-main-prod`, `wp-blueprint-tf-apply-prod`, in `configs/setup.sh` and the README commands | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R11 | Remove the management VPC (T31): its network, both peerings, the management VM, `mgmt-vm-sa` and its bindings, `startup-mgmt.sh`, the management variables and `local.service_accounts.mgmt` | 2026-10-16 | `pending` | Production review of 2026-10-14, T31 |
+| R12 | Build subnet `build-subnet-prod-europe-west1` (`/28`) in the production VPC, only for the ephemeral Packer VM | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R13 | Build firewall rules: SSH through IAP only to the tag `packer-build`, and egress from the build subnet to the Private Service Access range denied, so the build VM cannot reach Cloud SQL. Packer uses that tag instead of `iap-ssh-access`, which the web instances keep | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R14 | The first image build keeps running in the `default` network with an external IP (`_USE_IAP=false`), as today, because the production VPC does not exist before the first apply. Later builds run through IAP in the build subnet. New script in `configs/` that deletes the `default` network and its firewall rules after the first apply (optional step, documented in the README; afterwards `_USE_IAP=false` no longer works in that project). A separate network root with its own state, which would remove this exception, is left for T38 | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R15 | Pipeline service accounts (T35): `terraform-plan-sa` (read-only, both plan triggers; check what the ephemeral password read needs during plan), `terraform-apply-sa` (write roles, apply only), `packer-build-sa` (image build). Created by `configs/setup.sh`, one per trigger | 2026-10-16 | `pending` | Production review of 2026-10-14, T35 |
+| R16 | `configs/destroy.sh` with the new bucket and VPC names | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R17 | Secret names in `terraform/scripts/startup-prod.sh` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R18 | Check `cloudbuild/scripts/check_destructive.py`: it uses Terraform addresses, so it only changes if a protected address is renamed | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R19 | README: new names, Configuration tables (`environment` instead of the name variables), Project Structure, commands, and every section about the management VPC | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R20 | Architecture diagram PNG in the README with the caption about the build subnet; remove `architecture.jpeg` and its outdated note. Fix in the diagram first: `MySQL :3309` to `:3306`, `/upoads` to `/uploads` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R21 | Regenerate the README of every local module that changes, with terraform-docs | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R22 | Verification: `fmt`, `validate` and `tflint`, then a deploy from scratch. Checks: names in the console, first and later builds through IAP in the build subnet, the build VM cannot reach Cloud SQL, the checks of T10, and the open checks of T01 and T03 to T06 | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
 
 ### 1. Finish verifying what is already deployed
 
@@ -83,6 +112,27 @@ In priority order.
 | T28 | Remaining cleanup: the note in `APIs.tf` about PostgreSQL, MongoDB and a VPC connector, the unused `vpcaccess` API, and `min_replicas = 1` against the zone fault tolerance claim | 2026-10-07 | `pending` | Backlog 16 |
 | T29 | Delete merged and stray branches: `update/https-lb-fr`, `update/global-https-lb-and-pipeline`, `fix/destroy-service-networking`, `feature/stateless-wordpress`, local branch `origin` | 2026-10-08 | `pending` | Devlog 10-08, 16 |
 | T30 | Mark A18 and A19 in the verification checklist: WordPress over HTTPS with its styles, and `/wp-admin` without a redirect loop | 2026-10-08 | `pending` | Verification A18, A19 |
+
+### 8. Production readiness
+
+Changes to take the project from a portfolio deployment to one configured and documented as production. In priority order. Open tasks above that are also part of this: T11 (keys and salts), T14 (least-privilege IAM), T18 (observability), T19 (static analysis), T20 (pinned WordPress), T23 (image build triggers the plan), T25 (old images).
+
+| ID | Task | Created | Status | Detail |
+|---|---|---|---|---|
+| T31 | Remove the management VPC, the peering and the management VM. Packer builds in a subnet of the production VPC; admin access to the database through an IAP tunnel to a production instance or an admin VM created on demand. Replaces T12 | 2026-10-14 | `pending` | Production review of 2026-10-14; implemented in R11 |
+| T32 | Remove the snapshot backups from the function and the scheduler, and configure point-in-time recovery explicitly (`retained_backups`, `transaction_log_retention_days`, backup window). The daily export stays. Replaces T13 | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T33 | Restore runbook, tested: point-in-time recovery to a new instance, and restore from an export | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T34 | Database protection: `deletion_protection` and `prevent_destroy` set to `true`, and the destroy procedure documented (a reviewed change that turns protection off first) | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T35 | Separate pipeline service accounts: read-only for pull request plans, which can run code from the PR, and the account with write roles for the apply only | 2026-10-14 | `pending` | Production review of 2026-10-14; implemented in R15 |
+| T36 | Production values: `min_replicas` of at least 2 (zone fault tolerance), Cloud SQL tier sized, maintenance window, Query Insights | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T37 | Alerting that reaches someone: notification channel for the T18 alerts, export failure alert, and a billing budget alert | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T38 | Staging environment: a separate project with the same code, its own variable file and its own state. Includes renaming `terraform.tfvars` per environment | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T39 | SMTP relay for WordPress mail (port 25 is blocked on Compute Engine), with its credential in Secret Manager | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T40 | Operating system patching: scheduled image rebuild or VM Manager, and rollback to the previous image documented | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T41 | Shielded VM and enforced OS Login on the instances | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T42 | Cloud Armor: OWASP rules, and rate limiting on `wp-login.php` and `xmlrpc.php` | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T43 | README: monthly cost estimate, and portfolio notes removed once the values are production ones | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T44 | Optional, only if justified: Cloud CDN (with T24), a cross-region Cloud SQL replica for disaster recovery, Memorystore as object cache if measurements call for it | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 
 ## Done
 
