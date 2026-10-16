@@ -5,6 +5,8 @@
 ![Google Provider](https://img.shields.io/badge/Google_Provider-7.25.0-4285F4?logo=google-cloud&logoColor=white)
 ![IaC](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform&logoColor=white)
 
+> **Refactor in progress.** The project is being refactored towards a production-ready setup: a naming convention for every resource, the management VPC removed, a dedicated subnet for the image build, separate service accounts for plan, apply and image build, and an edge layer with Cloud Armor, Cloud CDN and a backend bucket for uploads. The [architecture diagram](#architecture) shows the target design; the rest of this README describes the code as it is today. Progress is tracked in [docs/to-do.md](docs/to-do.md).
+
 **Terraform, Packer and Cloud Build code that deploys WordPress into a Google Cloud project of your own: an auto-healing managed instance group behind a global HTTPS load balancer, Cloud SQL on a private IP, scheduled backups and credentials in Secret Manager.** Infrastructure changes go through pull requests: plan on every PR, apply of the plan generated on `main` by a manual, approved trigger.
 
 > **Note:** This is a portfolio project, not a production deployment. Some cost-optimized values (instance tier, disk size, a single instance at rest) differ from production recommendations documented in the code. Known gaps are listed in [Known Limitations](#known-limitations).
@@ -55,9 +57,11 @@ gcloud builds submit --project=$PROJECT_ID --config=cloudbuild/terraform-apply.y
 
 ## Architecture
 
-![Architecture Diagram](docs/architecture.jpeg)
+<a href="docs/architecture-v2.png"><img src="docs/architecture-v2.png" alt="Target architecture" width="100%"></a>
 
-> **Outdated diagram:** it still shows the regional HTTP load balancer with its proxy-only subnet, and it does not show the statics bucket mounted on the instances. The project now uses a global HTTPS load balancer and keeps WordPress uploads in Cloud Storage, as described below. An updated diagram will replace it shortly.
+*Click the diagram to open it at full size.*
+
+> **Target architecture.** The diagram shows the design the refactor announced at the top is moving to, not the code as it is today: resource names, the edge layer, the service accounts and the absence of the management VPC are not implemented yet. Not shown: `build-subnet-prod-europe-west1`, a subnet of the same VPC that only hosts the ephemeral Packer VM during an image build.
 
 ### Overview
 
@@ -193,7 +197,8 @@ The other four values (database name, user, host and connection string) are not 
 gcp-wordpress-blueprint/
 ├── README.md
 ├── docs/
-│   ├── architecture.jpeg            # Architecture diagram (outdated, see Architecture)
+│   ├── architecture-v2.png          # Target architecture diagram (refactor in progress)
+│   ├── architecture.jpeg            # Previous architecture diagram, outdated
 │   ├── to-do.md                     # Pending tasks and their status
 │   ├── devlogs/                     # Problems found during deploys, their causes and fixes
 │   └── screenshots/                 # Images used in the Screenshots section
