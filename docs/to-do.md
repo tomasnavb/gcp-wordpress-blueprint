@@ -21,7 +21,7 @@ In priority order.
 
 ### 0. Refactor: naming convention, network and pipeline identities
 
-Applies the naming convention of the architecture style guide (`[project]-[component]-[environment]`, short project name `wp-blueprint`, region only in subnet names, service accounts without environment), removes the management VPC (T31), adds a dedicated subnet for the image build and splits the pipeline service account (T35). Done on a clean deploy: nothing is deployed while it is in progress. Task IDs `R..` belong to this block.
+Applies the naming convention of the architecture style guide (`[project]-[component]-[environment]`, short project name `wp-blueprint`, region only in subnet names, service accounts without environment), removes the management VPC (T31), adds a dedicated subnet for the image build, splits the pipeline service account (T35), and adds the edge layer: uploads served from a backend bucket, Cloud CDN and Cloud Armor (T24, T42). Done on a clean deploy: nothing is deployed while it is in progress. Task IDs `R..` belong to this block.
 
 | ID | Task | Created | Status | Detail |
 |---|---|---|---|---|
@@ -30,7 +30,7 @@ Applies the naming convention of the architecture style guide (`[project]-[compo
 | R03 | Rename networking: `wp-blueprint-vpc-prod`, `web-subnet-prod-europe-west1`, `wp-blueprint-router-prod`, `wp-blueprint-nat-prod`, `wp-blueprint-allow-iap-ssh-prod`, `wp-blueprint-psa-range-prod` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
 | R04 | Rename compute: template prefix `wp-blueprint-web-tpl-prod-`, `wp-blueprint-web-mig-prod`, instances `wp-blueprint-web-prod`, `wp-blueprint-web-autoscaler-prod`, `wp-blueprint-web-hc-prod` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
 | R05 | Rename the load balancer: remove the `-global-external-lb` suffix from the module, every name `wp-blueprint-lb-*-prod` (IP `wp-blueprint-lb-ip-prod`, also in `configs/setup.sh`), firewall `wp-blueprint-allow-google-fe-prod` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
-| R06 | Rename data: `wp-blueprint-db-prod`, secrets `wp-blueprint-db-{name,user,password,host,connection}-prod`, buckets `<project_id>-statics`, `<project_id>-db-backups`, `<project_id>-fn-source`, function `wp-blueprint-db-backup-fn-prod`, job `wp-blueprint-db-export-job-prod`, custom role `wpBlueprintDbBackup` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R06 | Rename data: `wp-blueprint-db-prod`, secrets `wp-blueprint-db-{name,user,password,host,connection}-prod`, buckets `<project_id>-uploads` (see R23), `<project_id>-db-backups`, `<project_id>-fn-source`, function `wp-blueprint-db-backup-fn-prod`, job `wp-blueprint-db-export-job-prod`, custom role `wpBlueprintDbBackup` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
 | R07 | Rename workload service accounts: `web-vm-sa`, `db-backup-fn-sa`, `db-backup-build-sa`, `scheduler-invoker-sa` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
 | R08 | Image: family `wp-blueprint-web`, image `wp-blueprint-web-{{timestamp}}`, in the Packer template and the image data source | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
 | R09 | State: bucket `<project_id>-tfstate` and backend prefix `wp-blueprint/prod`, in `configs/setup.sh`, both Terraform pipelines and the README | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
@@ -46,7 +46,12 @@ Applies the naming convention of the architecture style guide (`[project]-[compo
 | R19 | README: new names, Configuration tables (`environment` instead of the name variables), Project Structure, commands, and every section about the management VPC | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
 | R20 | Architecture diagram PNG in the README with the caption about the build subnet; remove `architecture.jpeg` and its outdated note. Fix in the diagram first: `MySQL :3309` to `:3306`, `/upoads` to `/uploads` | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
 | R21 | Regenerate the README of every local module that changes, with terraform-docs | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
-| R22 | Verification: `fmt`, `validate` and `tflint`, then a deploy from scratch. Checks: names in the console, first and later builds through IAP in the build subnet, the build VM cannot reach Cloud SQL, the checks of T10, and the open checks of T01 and T03 to T06 | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
+| R23 | Uploads bucket: `<project_id>-uploads` replaces the statics bucket and holds only the uploads, in the folder `wp-content/uploads` (`local.statics_uploads_folder`), so the object path equals the URL path and the backend bucket needs no URL rewrite. Anything private, such as plugins (T22), goes in a separate bucket | 2026-10-16 | `pending` | Edge review of 2026-10-16 |
+| R24 | Backend bucket for `/wp-content/uploads/*` (path rule in the URL map). First check whether Cloud CDN can read a private bucket, which keeps `public_access_prevention` enforced; if not, grant `allUsers` `roles/storage.legacyObjectReader` (read a known object, no listing) and document the exception to the shared bucket local. Replaces T24 | 2026-10-16 | `pending` | Edge review of 2026-10-16, T24 |
+| R25 | Cloud CDN on the backend service and on the backend bucket, both with `cache_mode = "CACHE_ALL_STATIC"`. Comment in the code why `FORCE_CACHE_ALL` is ruled out (it would cache pages of logged-in users) | 2026-10-16 | `pending` | Edge review of 2026-10-16 |
+| R26 | Cloud Armor: backend security policy on the backend service with the preconfigured OWASP rules and rate limiting on `wp-login.php` and `xmlrpc.php`; edge security policy on the backend bucket if needed. Replaces T42 | 2026-10-16 | `pending` | Edge review of 2026-10-16, T42 |
+| R27 | README note: uploads are public by design, as in standard WordPress; per-user private files would go in a separate private bucket served through signed URLs, never in the uploads bucket | 2026-10-16 | `pending` | Edge review of 2026-10-16 |
+| R22 | Verification: `fmt`, `validate` and `tflint`, then a deploy from scratch. Checks: names in the console, first and later builds through IAP in the build subnet, the build VM cannot reach Cloud SQL, uploads served by the backend bucket, CDN cache hits on uploads and on theme assets but not on HTML or logged-in pages, Cloud Armor rules blocking a test request, the checks of T10, and the open checks of T01 and T03 to T06 | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
 
 ### 1. Finish verifying what is already deployed
 
@@ -98,9 +103,9 @@ Applies the naming convention of the architecture style guide (`[project]-[compo
 | ID | Task | Created | Status | Detail |
 |---|---|---|---|---|
 | T21 | First deploy through the triggers, from `main`, instead of `gcloud builds submit` with the local clone | 2026-10-08 | `pending` | Devlog 10-08, 18 |
-| T22 | Statics bucket: add a `plugins/` folder mounted on the instances, and decide how plugins and themes are managed | 2026-10-11 | `pending` | Devlog 10-08, 24 |
+| T22 | Decide how plugins and themes are managed; if they move out of the image, a separate private bucket mounted on the instances, never the public uploads bucket (R23) | 2026-10-11 | `pending` | Devlog 10-08, 24 |
 | T23 | Let `packer-build` trigger the Terraform plan when it finishes, instead of running it by hand | 2026-10-07 | `pending` | Backlog 6, "Later improvement" |
-| T24 | Serve uploads straight from the bucket through a backend bucket on the load balancer | 2026-10-08 | `pending` | Devlog 10-08, priority 2 |
+| T24 | Serve uploads straight from the bucket through a backend bucket on the load balancer | 2026-10-08 | `pending` | Devlog 10-08, priority 2; implemented in R24 |
 | T25 | Clean up old golden images, which accumulate with every build | 2026-10-09 | `pending` | — |
 
 ### 7. Minor
@@ -130,9 +135,9 @@ Changes to take the project from a portfolio deployment to one configured and do
 | T39 | SMTP relay for WordPress mail (port 25 is blocked on Compute Engine), with its credential in Secret Manager | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 | T40 | Operating system patching: scheduled image rebuild or VM Manager, and rollback to the previous image documented | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 | T41 | Shielded VM and enforced OS Login on the instances | 2026-10-14 | `pending` | Production review of 2026-10-14 |
-| T42 | Cloud Armor: OWASP rules, and rate limiting on `wp-login.php` and `xmlrpc.php` | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T42 | Cloud Armor: OWASP rules, and rate limiting on `wp-login.php` and `xmlrpc.php` | 2026-10-14 | `pending` | Production review of 2026-10-14; implemented in R26 |
 | T43 | README: monthly cost estimate, and portfolio notes removed once the values are production ones | 2026-10-14 | `pending` | Production review of 2026-10-14 |
-| T44 | Optional, only if justified: Cloud CDN (with T24), a cross-region Cloud SQL replica for disaster recovery, Memorystore as object cache if measurements call for it | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T44 | Optional, only if justified: a cross-region Cloud SQL replica for disaster recovery, Memorystore as object cache if measurements call for it | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 
 ## Done
 
