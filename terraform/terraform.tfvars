@@ -5,16 +5,16 @@
 #   export TF_VAR_project_id="your-gcp-project-id"
 #   export TF_VAR_iap_user_email="you@example.com"
 # ==============================================================
+environment    = "prod" # Part of every resource name (see locals.tf)
 project_region = "europe-west1"
 project_zone   = "europe-west1-b"
 
 # ==============================================================
 # NETWORKING
 # ==============================================================
-vpc_prod_name             = "wordpress-prod-vpc"
-subnet_prod_name          = "wordpress-prod-subnet"
-subnet_prod_region        = "europe-west1"
-subnet_prod_ip_cidr_range = "10.0.0.0/24"
+# VPC, subnet, router, NAT and firewall names are built in locals.tf from the environment.
+web_subnet_ip_cidr_range   = "10.0.0.0/24"
+build_subnet_ip_cidr_range = "10.0.1.0/28"
 
 # ==============================================================
 # COMPUTE — MIG (Production)

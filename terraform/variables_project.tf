@@ -3,6 +3,16 @@ variable "project_id" {
   type        = string
 }
 
+variable "environment" {
+  description = "Environment of this deployment. Part of every resource name (see locals.tf)"
+  type        = string
+
+  validation {
+    condition     = contains(["dev", "prod"], var.environment)
+    error_message = "environment must be dev or prod."
+  }
+}
+
 variable "project_region" {
   description = "Default GCP region for the project"
   type        = string

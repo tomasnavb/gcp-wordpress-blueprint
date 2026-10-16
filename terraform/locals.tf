@@ -1,4 +1,28 @@
 locals {
+  # Naming convention (docs: architecture style guide): [project]-[component]-[environment], lowercase,
+  # hyphens only, region at the end of subnet names only. Names are built here and not exposed as
+  # variables: each has one job, and scripts outside Terraform rely on some of them.
+  name_prefix = "wp-blueprint"
+
+  # Networking
+  vpc_name                  = "${local.name_prefix}-vpc-${var.environment}"
+  web_subnet_name           = "web-subnet-${var.environment}-${var.project_region}"
+  build_subnet_name         = "build-subnet-${var.environment}-${var.project_region}"
+  router_name               = "${local.name_prefix}-router-${var.environment}"
+  nat_name                  = "${local.name_prefix}-nat-${var.environment}"
+  psa_range_name            = "${local.name_prefix}-psa-range-${var.environment}"
+  fw_iap_ssh_web_name       = "${local.name_prefix}-allow-iap-ssh-${var.environment}"
+  fw_iap_ssh_build_name     = "${local.name_prefix}-allow-iap-ssh-build-${var.environment}"
+  fw_deny_build_to_psa_name = "${local.name_prefix}-deny-build-to-psa-${var.environment}"
+
+  # Network tags. The web tag is also set on the instances (instance_template_tags in terraform.tfvars),
+  # the build tag on the Packer VM (packer/wordpress.pkr.hcl).
+  web_ssh_network_tag = "iap-ssh-access"
+  build_network_tag   = "packer-build"
+
+  # Source range of IAP TCP forwarding, fixed by Google.
+  iap_source_range = "35.235.240.0/20"
+
   # Service accounts
   service_accounts = {
     prod         = "serviceAccount:${google_service_account.prod_vm.email}"
