@@ -12,18 +12,14 @@ project_zone   = "europe-west1-b"
 # ==============================================================
 # NETWORKING
 # ==============================================================
-# VPC, subnet, router, NAT and firewall names are built in locals.tf from the environment.
+# Resource names are built in locals.tf from the environment (naming convention), not set here.
 web_subnet_ip_cidr_range   = "10.0.0.0/24"
 build_subnet_ip_cidr_range = "10.0.1.0/28"
 
 # ==============================================================
 # COMPUTE — MIG (Production)
 # ==============================================================
-instance_template_name_prefix    = "wordpress-prod-template-"
 machine_type                     = "e2-standard-2"
-instance_template_tags           = ["backend-service", "iap-ssh-access"]
-mig_name                         = "wordpress-prod-mig"
-base_instance_name               = "wordpress-prod"
 distribution_policy_zones        = ["europe-west1-b", "europe-west1-c", "europe-west1-d"]
 distribution_policy_target_shape = "EVEN"
 port_name                        = "http"
@@ -38,7 +34,6 @@ initial_delay_sec                = 300
 # ==============================================================
 # COMPUTE — HEALTH CHECK
 # ==============================================================
-health_check_name   = "wordpress-prod-http-hc"
 check_interval_sec  = 10
 timeout_sec         = 5
 healthy_threshold   = 2
@@ -49,7 +44,6 @@ request_path        = "/health.php"
 # ==============================================================
 # COMPUTE — AUTOSCALER
 # ==============================================================
-autoscaler_name        = "wordpress-prod-autoscaler"
 min_replicas           = 1
 max_replicas           = 3
 cooldown_period        = 60
@@ -63,7 +57,7 @@ max_scaled_in_replicas = 1
 #   true  — the IP is reserved once by setup.sh and survives terraform destroy,
 #           so the DNS record does not change between deploys (production behaviour).
 #           A reserved IP is billed while no load balancer uses it; release it with
-#           `gcloud compute addresses delete wordpress-prod-lb-ip-global-external-lb --global`.
+#           `gcloud compute addresses delete wp-blueprint-lb-ip-prod --global`.
 #   false — Terraform creates and destroys the IP with the load balancer.
 #           No idle cost, but every deploy gets a new IP and the DNS record must be updated.
 # ==============================================================
@@ -77,7 +71,6 @@ domain_names = ["wordpress.tomasnavarro.dev"]
 # DATABASE
 # instance_tier reduced for portfolio cost (prod recommendation: db-custom-4-16384)
 # ==============================================================
-instance_name         = "wordpress-prod-db"
 instance_region       = "europe-west1"
 instance_tier         = "db-custom-2-4096"
 instance_disk_size_gb = 20
@@ -86,16 +79,8 @@ instance_disk_size_gb = 20
 db_password_version = 1
 
 # ==============================================================
-# STORAGE
-# Final bucket names are: <base_name>-<project_id>  (see locals.tf)
-# ==============================================================
-db_backup_bucket_base_name = "wordpress-db-backups"
-scripts_bucket_base_name   = "wordpress-fn-scripts"
-
-# ==============================================================
 # CLOUD FUNCTION
 # ==============================================================
-function_name   = "wordpress-fn-db-backup-prod"
 function_region = "europe-west1"
 
 # ==============================================================

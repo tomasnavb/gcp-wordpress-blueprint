@@ -4,7 +4,7 @@
 disk autoresize preventing disk space exhaustion, and private networking for secure communication. */
 resource "google_sql_database_instance" "main" {
   depends_on          = [google_project_service.gcp_services, google_service_networking_connection.private_connection]
-  name                = var.instance_name
+  name                = local.db_instance_name
   region              = var.instance_region
   database_version    = "MYSQL_8_4"
   deletion_protection = false # Set to true in production environments to prevent accidental deletion of the database instance.

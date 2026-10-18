@@ -1,9 +1,9 @@
-# Latest image of the wordpress-golden family, resolved to a concrete image on every plan.
+# Latest image of the golden image family, resolved to a concrete image on every plan.
 # The family URL alone never changes, so Terraform would not notice a new Packer build.
 # With the concrete image, a new build shows up as an instance template replacement and
 # the MIG rolls it out. The plan fails here if no image has been built yet.
 data "google_compute_image" "wordpress_golden" {
-  family  = "wordpress-golden"
+  family  = local.image_family
   project = var.project_id
 }
 
@@ -13,13 +13,13 @@ module "wordpress_regional_mig" {
   # Instances must not boot before what their startup script needs is ready: the secrets with
   # their values (the database host only exists once Cloud SQL is created), the bindings that
   # let them read those secrets, already propagated, the database and user WordPress connects to,
-  # and the uploads/ folder of the statics bucket, which they mount.
+  # and the uploads folder of the uploads bucket, which they mount.
   # Without this the first instances boot minutes too early and fail to configure themselves.
   depends_on = [
     google_storage_bucket_object.uploads_folder,
     google_secret_manager_secret_version.wordpress_secrets,
     google_secret_manager_secret_version.db_password,
-    time_sleep.prod_vm_iam_propagation,
+    time_sleep.web_vm_iam_propagation,
     google_sql_database.wordpress_db,
     google_sql_user.wordpress_app_user,
   ]
@@ -27,7 +27,7 @@ module "wordpress_regional_mig" {
   region = var.project_region
 
   # Instance template
-  template_name_prefix = var.instance_template_name_prefix
+  template_name_prefix = local.web_template_name_prefix
   machine_type         = var.machine_type
   source_image         = data.google_compute_image.wordpress_golden.self_link
   disk_size_gb         = local.disk_size_gb
@@ -35,22 +35,28 @@ module "wordpress_regional_mig" {
   network              = module.vpc.network_self_link
   subnetwork           = module.vpc.subnets["${var.project_region}/${local.web_subnet_name}"].id
   startup_script       = file("${path.root}/scripts/startup-prod.sh")
-  # statics-bucket and uploads-folder are read by startup-prod.sh to mount the uploads folder of the
-  # statics bucket; the reference to the bucket resource also makes the instances wait until it exists.
+  # Read by startup-prod.sh, so the names it uses are always the ones Terraform created:
+  # - uploads-bucket and uploads-folder: what to mount. The reference to the bucket resource also
+  #   makes the instances wait until it exists.
+  # - secret-db-*: the names of the database secrets.
   # db-password-version is not read by anything: it is here so that rotating the password changes
   # the instance template, which makes the MIG replace the instances. They only read the password
   # at boot, so without a replacement they would keep the old one and lose the database.
   extra_metadata = {
-    "statics-bucket"      = google_storage_bucket.statics.name
-    "uploads-folder"      = local.statics_uploads_folder
+    "uploads-bucket"      = google_storage_bucket.uploads.name
+    "uploads-folder"      = local.uploads_folder
+    "secret-db-name"      = local.db_secret_names.name
+    "secret-db-user"      = local.db_secret_names.user
+    "secret-db-password"  = local.db_secret_names.password
+    "secret-db-host"      = local.db_secret_names.host
     "db-password-version" = tostring(var.db_password_version)
   }
-  service_account_email = google_service_account.prod_vm.email
-  tags                  = var.instance_template_tags
+  service_account_email = google_service_account.web_vm.email
+  tags                  = [local.backend_network_tag, local.web_ssh_network_tag]
 
   # MIG
-  mig_name                         = var.mig_name
-  base_instance_name               = var.base_instance_name
+  mig_name                         = local.web_mig_name
+  base_instance_name               = local.web_instance_base_name
   distribution_policy_zones        = var.distribution_policy_zones
   distribution_policy_target_shape = var.distribution_policy_target_shape
   port_name                        = var.port_name
@@ -63,7 +69,7 @@ module "wordpress_regional_mig" {
   max_unavailable_fixed            = var.max_unavailable_fixed
 
   # Health check
-  health_check_name   = var.health_check_name
+  health_check_name   = local.web_health_check_name
   check_interval_sec  = var.check_interval_sec
   timeout_sec         = var.timeout_sec
   healthy_threshold   = var.healthy_threshold
@@ -72,7 +78,7 @@ module "wordpress_regional_mig" {
   request_path        = var.request_path
 
   # Autoscaler
-  autoscaler_name        = var.autoscaler_name
+  autoscaler_name        = local.web_autoscaler_name
   min_replicas           = var.min_replicas
   max_replicas           = var.max_replicas
   cooldown_period        = var.cooldown_period
@@ -84,25 +90,22 @@ module "wordpress_regional_mig" {
 module "global_external_lb" {
   source = "./modules/global_external_lb"
 
+  # Resource names: <name_prefix>-<component>-<environment>, e.g. wp-blueprint-lb-ip-prod.
+  # With use_reserved_ip the IP is looked up by that name: configs/setup.sh reserves it with the same one.
+  name_prefix     = local.lb_name_prefix
+  environment     = var.environment
+  use_reserved_ip = var.lb_use_reserved_ip
+
   # Firewall rule that lets the Google front ends reach the backends (health checks and proxied traffic).
-  # Only the backend tag: the template also carries "iap-ssh-access", which is unrelated to the LB.
+  # Only the backend tag: the instances also carry the IAP SSH tag, which is unrelated to the LB.
   project_id          = var.project_id
   network_self_link   = module.vpc.network_self_link
-  backend_target_tags = ["backend-service"]
+  backend_target_tags = [local.backend_network_tag]
 
   # Backend: the MIG and the named port it serves on
   mig_instance_group = module.wordpress_regional_mig.instance_group
   backend_port_name  = var.port_name
   backend_port       = var.port
-
-  # Resource names (module appends "-global-external-lb" suffix to IP, url_map, health_check;
-  # every other resource is named after lb_name)
-  ip_address_name      = "wordpress-prod-lb-ip"
-  use_reserved_ip      = var.lb_use_reserved_ip
-  lb_name              = "wordpress-prod-lb"
-  url_map_name         = "wordpress-prod-lb-url-map"
-  health_check_name    = "wordpress-prod-lb-hc"
-  backend_service_name = "wordpress-prod-lb-backend-service"
 
   # HTTPS: Google-managed certificate and minimum TLS version
   domain_names       = var.domain_names

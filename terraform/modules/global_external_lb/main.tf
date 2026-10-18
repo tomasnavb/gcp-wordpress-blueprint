@@ -1,10 +1,24 @@
 locals {
-  lb_suffix   = "-global-external-lb"
   ip_protocol = "TCP"
+
+  # Every resource is named <name_prefix>-<component>-<environment>, following the naming convention.
+  names = {
+    ip            = "${var.name_prefix}-ip-${var.environment}"
+    ssl_policy    = "${var.name_prefix}-ssl-policy-${var.environment}"
+    https_rule    = "${var.name_prefix}-https-fr-${var.environment}"
+    http_rule     = "${var.name_prefix}-http-fr-${var.environment}"
+    https_proxy   = "${var.name_prefix}-https-proxy-${var.environment}"
+    http_proxy    = "${var.name_prefix}-http-proxy-${var.environment}"
+    url_map       = "${var.name_prefix}-url-map-${var.environment}"
+    redirect      = "${var.name_prefix}-redirect-${var.environment}"
+    backend       = "${var.name_prefix}-backend-${var.environment}"
+    health_check  = "${var.name_prefix}-hc-${var.environment}"
+    firewall_rule = "${var.name_prefix}-allow-google-fe-${var.environment}"
+  }
 
   # Same name in both modes: the address this module creates, or the one reserved beforehand
   # that it looks up. Either way the forwarding rules use local.ip_address.
-  ip_address_name = "${var.ip_address_name}${local.lb_suffix}"
+  ip_address_name = local.names.ip
   ip_address = (
     var.use_reserved_ip
     ? data.google_compute_global_address.reserved[0].address
@@ -13,7 +27,8 @@ locals {
 
   # The certificate name changes with the domain list. Together with create_before_destroy,
   # a domain change creates the new certificate before the old one is removed from the proxy.
-  certificate_name = "${var.lb_name}-cert-${substr(md5(join(",", var.domain_names)), 0, 8)}"
+  # The hash goes last, so the environment cannot be the last part of this name.
+  certificate_name = "${var.name_prefix}-cert-${var.environment}-${substr(md5(join(",", var.domain_names)), 0, 8)}"
 
   # Google front end ranges. With a global external Application Load Balancer both the
   # health check probes and the proxied client traffic reach the backends from these ranges.
@@ -58,14 +73,14 @@ resource "google_compute_managed_ssl_certificate" "https" {
 # SSL policy that sets the minimum TLS version and cipher profile accepted from clients.
 # Without one the proxy uses the default policy, which still accepts TLS 1.0.
 resource "google_compute_ssl_policy" "https" {
-  name            = "${var.lb_name}-ssl-policy"
+  name            = local.names.ssl_policy
   profile         = var.ssl_policy_profile
   min_tls_version = var.min_tls_version
 }
 
 # Global forwarding rule that intercepts HTTPS traffic on port 443 and routes it to the HTTPS proxy
 resource "google_compute_global_forwarding_rule" "https" {
-  name                  = "${var.lb_name}-https-forwarding-rule"
+  name                  = local.names.https_rule
   ip_protocol           = local.ip_protocol
   load_balancing_scheme = var.load_balancing_scheme
   port_range            = "443"
@@ -76,7 +91,7 @@ resource "google_compute_global_forwarding_rule" "https" {
 # Global forwarding rule that intercepts plain HTTP traffic on port 80, on the same IP,
 # and routes it to the HTTP proxy, whose only job is to redirect to HTTPS
 resource "google_compute_global_forwarding_rule" "http" {
-  name                  = "${var.lb_name}-http-forwarding-rule"
+  name                  = local.names.http_rule
   ip_protocol           = local.ip_protocol
   load_balancing_scheme = var.load_balancing_scheme
   port_range            = "80"
@@ -90,7 +105,7 @@ resource "google_compute_global_forwarding_rule" "http" {
 
 # Target HTTPS proxy that terminates SSL connections and forwards requests to the production URL map
 resource "google_compute_target_https_proxy" "https" {
-  name             = "${var.lb_name}-https-proxy"
+  name             = local.names.https_proxy
   url_map          = google_compute_url_map.external_lb_url_map.id
   ssl_certificates = [google_compute_managed_ssl_certificate.https.id]
   ssl_policy       = google_compute_ssl_policy.https.id
@@ -98,19 +113,19 @@ resource "google_compute_target_https_proxy" "https" {
 
 # Target HTTP proxy used to capture plain HTTP traffic and bind it to the redirect URL map
 resource "google_compute_target_http_proxy" "http" {
-  name    = "${var.lb_name}-http-proxy"
+  name    = local.names.http_proxy
   url_map = google_compute_url_map.http_redirect.id
 }
 
 # URL map that handles incoming traffic and matches hostname/path rules to the production backend service
 resource "google_compute_url_map" "external_lb_url_map" {
-  name            = "${var.url_map_name}${local.lb_suffix}"
+  name            = local.names.url_map
   default_service = google_compute_backend_service.mig.self_link
 }
 
 # URL map dedicated to issuing a permanent 301 redirect for all plain HTTP traffic towards HTTPS
 resource "google_compute_url_map" "http_redirect" {
-  name = "${var.lb_name}-http-redirect"
+  name = local.names.redirect
 
   default_url_redirect {
     https_redirect         = true
@@ -126,7 +141,7 @@ resource "google_compute_url_map" "http_redirect" {
 # Backend service that orchestrates target groups, scaling parameters, and load balancing configurations.
 # port_name must match a named port of the instance group.
 resource "google_compute_backend_service" "mig" {
-  name                  = var.backend_service_name
+  name                  = local.names.backend
   protocol              = var.backend_service_protocol
   port_name             = var.backend_port_name
   load_balancing_scheme = var.load_balancing_scheme
@@ -143,7 +158,7 @@ resource "google_compute_backend_service" "mig" {
 
 # Global health check designed to monitor individual instance readiness by probing the health status path
 resource "google_compute_health_check" "backend_health_check" {
-  name = "${var.health_check_name}${local.lb_suffix}"
+  name = local.names.health_check
 
   http_health_check {
     port         = var.http_health_check_port
@@ -158,7 +173,7 @@ resource "google_compute_health_check" "backend_health_check" {
 # Lets the Google front ends reach the backends. This single rule covers both the health check
 # probes and the client traffic proxied by the load balancer, which arrive from the same ranges.
 resource "google_compute_firewall" "allow_google_frontends" {
-  name    = "${var.lb_name}-allow-google-frontends"
+  name    = local.names.firewall_rule
   project = var.project_id
   network = var.network_self_link
 

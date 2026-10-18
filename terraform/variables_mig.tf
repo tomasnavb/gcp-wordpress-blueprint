@@ -1,25 +1,5 @@
-variable "instance_template_name_prefix" {
-  description = "Name prefix for the instance template (a timestamp suffix is auto-appended)"
-  type        = string
-}
-
 variable "machine_type" {
-  description = "Machine type for production WordPress instances"
-  type        = string
-}
-
-variable "instance_template_tags" {
-  description = "Network tags applied to instances (used for firewall rule targeting)"
-  type        = list(string)
-}
-
-variable "mig_name" {
-  description = "Name for the regional managed instance group"
-  type        = string
-}
-
-variable "base_instance_name" {
-  description = "Base name for instances created by the MIG"
+  description = "Machine type of the WordPress instances"
   type        = string
 }
 
@@ -73,11 +53,6 @@ variable "initial_delay_sec" {
   type        = number
 }
 
-variable "health_check_name" {
-  description = "Name for the HTTP health check resource"
-  type        = string
-}
-
 variable "check_interval_sec" {
   description = "How often the health check runs (seconds)"
   type        = number
@@ -105,11 +80,6 @@ variable "health_check_port" {
 
 variable "request_path" {
   description = "HTTP path the health check requests"
-  type        = string
-}
-
-variable "autoscaler_name" {
-  description = "Name for the regional autoscaler resource"
   type        = string
 }
 

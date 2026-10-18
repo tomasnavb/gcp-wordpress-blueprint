@@ -1,8 +1,3 @@
-variable "instance_name" {
-  description = "Name for the Cloud SQL production instance"
-  type        = string
-}
-
 variable "instance_region" {
   description = "GCP region for the Cloud SQL instance"
   type        = string

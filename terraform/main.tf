@@ -26,7 +26,8 @@ terraform {
     }
   }
   backend "gcs" {
-    prefix = "environments/prod/networking"
+    # <project>/<environment>. The bucket is passed with -backend-config (<project_id>-tfstate).
+    prefix = "wp-blueprint/prod"
   }
 }
 

@@ -1,9 +1,4 @@
 # Cloud Function
-variable "function_name" {
-  description = "Name for the Cloud Function that runs CloudSQL backups"
-  type        = string
-}
-
 variable "function_description" {
   description = "Human-readable description for the Cloud Function"
   type        = string

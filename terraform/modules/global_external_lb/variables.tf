@@ -13,18 +13,18 @@ variable "backend_target_tags" {
   type        = list(string)
 }
 
-variable "ip_address_name" {
-  description = "Base name of the external IP address (module appends '-global-external-lb'). With use_reserved_ip it is the name of the existing address to look up"
-  type        = string
-}
-
 variable "use_reserved_ip" {
   description = "true: use a global address reserved outside Terraform, looked up by name, which survives terraform destroy. false: create the address here and destroy it with the load balancer"
   type        = bool
 }
 
-variable "lb_name" {
-  description = "Base name of the load balancer. Proxies, forwarding rules, the redirect URL map, the certificate, the SSL policy and the firewall rule are named after it"
+variable "name_prefix" {
+  description = "Prefix of every resource name. Names are <name_prefix>-<component>-<environment>, e.g. myapp-lb-ip-prod. With use_reserved_ip, the IP is looked up by that name"
+  type        = string
+}
+
+variable "environment" {
+  description = "Environment, last part of every resource name (dev or prod)"
   type        = string
 }
 
@@ -43,16 +43,6 @@ variable "min_tls_version" {
   type        = string
 }
 
-variable "url_map_name" {
-  description = "Base name for the URL map resource (module appends '-global-external-lb')"
-  type        = string
-}
-
-variable "health_check_name" {
-  description = "Base name for the health check resource (module appends '-global-external-lb')"
-  type        = string
-}
-
 variable "http_health_check_port" {
   description = "TCP port the health check probes on the backend instances"
   type        = number
@@ -60,11 +50,6 @@ variable "http_health_check_port" {
 
 variable "health_check_request_path" {
   description = "HTTP path the health check requests on the backend instances"
-  type        = string
-}
-
-variable "backend_service_name" {
-  description = "Name for the backend service resource"
   type        = string
 }
 
