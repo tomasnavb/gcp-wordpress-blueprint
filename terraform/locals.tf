@@ -56,6 +56,8 @@ locals {
     fn           = "serviceAccount:${google_service_account.db_backup_fn.email}"
     fn_build     = "serviceAccount:${google_service_account.db_backup_build.email}"
     scheduler    = "serviceAccount:${google_service_account.scheduler_invoker.email}"
+    # Created by configs/setup.sh, outside Terraform: built from its name, not from a resource.
+    pipeline_plan = "serviceAccount:terraform-plan-sa@${var.project_id}.iam.gserviceaccount.com"
   }
 
   # Cloud Storage. Bucket names are unique across all of GCP, so they start with the project ID.

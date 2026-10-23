@@ -37,9 +37,7 @@ steps:
       - '-var'
       - 'zone=$_ZONE'
       - '-var'
-      - 'network=$_NETWORK'
-      - '-var'
-      - 'subnetwork=$_SUBNETWORK'
+      - 'environment=$_ENVIRONMENT'
       - '-var'
       - 'use_iap=$_USE_IAP'
       - 'packer/'
@@ -59,9 +57,7 @@ steps:
       - '-var'
       - 'zone=$_ZONE'
       - '-var'
-      - 'network=$_NETWORK'
-      - '-var'
-      - 'subnetwork=$_SUBNETWORK'
+      - 'environment=$_ENVIRONMENT'
       - '-var'
       - 'use_iap=$_USE_IAP'
       - 'packer/'
@@ -73,10 +69,10 @@ steps:
 substitutions:
   _PROJECT_ID: 'your-gcp-project-id'
   _ZONE: 'europe-west1-b'
-  _NETWORK: 'wordpress-mgmt-vpc'
-  _SUBNETWORK: 'wordpress-mgmt-subnet'
-  # true  — build VM without external IP, SSH through an IAP tunnel (management VPC)
-  # false — SSH to the VM's external IP; only for the first build in the default network
+  # Selects the build subnet (packer/variables.pkr.hcl)
+  _ENVIRONMENT: 'prod'
+  # true  — build VM in the build subnet, without external IP, SSH through an IAP tunnel
+  # false — default network and the VM's external IP; only for the first build
   _USE_IAP: 'true'
   # To upgrade Packer change both values. The checksum is in
   # https://releases.hashicorp.com/packer/<version>/packer_<version>_SHA256SUMS (linux_amd64 line)

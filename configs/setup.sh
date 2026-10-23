@@ -12,7 +12,13 @@ export PROJECT_ID="${PROJECT_ID:-your-gcp-project-id}"
 export ENVIRONMENT="${ENVIRONMENT:-prod}"   # environment in terraform/terraform.tfvars; part of the names below
 export STATE_BUCKET="${PROJECT_ID}-tfstate"   # passed to terraform init via -backend-config in Cloud Build
 export REGION="europe-west1"
-export CB_SA="terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
+# Pipeline service accounts, one per job (created below):
+#   plan   - read-only, runs the plans of pull requests and of main. A plan runs code from the PR.
+#   apply  - write roles, runs only the manual, approved apply.
+#   packer - builds the golden image.
+export PLAN_SA="terraform-plan-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+export APPLY_SA="terraform-apply-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+export PACKER_SA="packer-build-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 export REPO_NAME="${REPO_NAME:-your-repo-name}"
 export REPO_OWNER="${REPO_OWNER:-your-github-username-or-org}"
 export IAP_USER_EMAIL="${IAP_USER_EMAIL:-your-email-address}"   # Google account granted SSH access through IAP
@@ -109,102 +115,103 @@ else
 fi
 
 # ==============================================================
-# Cloud Build service account
+# Pipeline service accounts
 # ==============================================================
-gcloud iam service-accounts create terraform-cloud-build \
+gcloud iam service-accounts create terraform-plan-sa \
   --project=${PROJECT_ID} \
-  --display-name="Terraform Cloud Build SA" \
-  --description="Service account for the Terraform CI/CD pipeline via Cloud Build"
+  --display-name="Terraform plan SA" \
+  --description="Read-only. Runs terraform plan for pull requests and for main"
 
-echo "Waiting for service account to propagate..."
+gcloud iam service-accounts create terraform-apply-sa \
+  --project=${PROJECT_ID} \
+  --display-name="Terraform apply SA" \
+  --description="Runs terraform apply of an approved plan"
+
+gcloud iam service-accounts create packer-build-sa \
+  --project=${PROJECT_ID} \
+  --display-name="Packer build SA" \
+  --description="Builds the golden image with Packer"
+
+echo "Waiting for the service accounts to propagate..."
 sleep 15
 
-# ==============================================================
-# Project-level IAM bindings
-# Adjust this list if your project manages additional resource types
-# ==============================================================
+# Grants project-level roles to a service account: grant_roles <email> <role>...
+grant_roles() {
+  local sa=$1
+  shift
+  for role in "$@"; do
+    gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+      --member="serviceAccount:${sa}" \
+      --role="${role}" \
+      --condition=None \
+      --quiet >/dev/null
+    echo "  ${sa}: ${role}"
+  done
+}
 
-# Service Usage — Terraform enables the project APIs listed in terraform/APIs.tf
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/serviceusage.serviceUsageAdmin"
+# Plan: read-only.
+#   viewer                - refresh: read the real state of every resource
+#   iam.securityReviewer  - read IAM policies, which viewer does not include (refresh of the bindings)
+#   logging.logWriter     - build logs (CLOUD_LOGGING_ONLY)
+# Terraform adds what the plan reads beyond that, scoped to the resource (terraform/IAM.tf, 3.7): the
+# database password secret, read during plan by an ephemeral block, and the objects it manages.
+grant_roles "${PLAN_SA}" \
+  roles/viewer \
+  roles/iam.securityReviewer \
+  roles/logging.logWriter
 
-# Compute Engine — VMs, MIGs, instance templates, networks, firewalls, LBs, autoscalers
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/compute.admin"
+# Apply: creates and changes every resource of the project. Adjust this list if the project
+# manages additional resource types.
+grant_roles "${APPLY_SA}" \
+  roles/serviceusage.serviceUsageAdmin \
+  roles/compute.admin \
+  roles/cloudsql.admin \
+  roles/cloudfunctions.admin \
+  roles/run.admin \
+  roles/storage.admin \
+  roles/secretmanager.admin \
+  roles/cloudscheduler.admin \
+  roles/servicenetworking.networksAdmin \
+  roles/logging.logWriter \
+  roles/iam.roleAdmin \
+  roles/iam.serviceAccountAdmin \
+  roles/iam.serviceAccountUser \
+  roles/resourcemanager.projectIamAdmin
+# What each one is for:
+#   serviceUsageAdmin       - Terraform enables the APIs listed in terraform/APIs.tf
+#   compute.admin           - VMs, MIGs, templates, networks, firewalls, load balancer, autoscaler
+#   cloudsql.admin          - instance, database, user
+#   cloudfunctions.admin    - backup function (v2)
+#   run.admin               - Cloud Functions v2 runs on Cloud Run
+#   storage.admin           - application buckets
+#   secretmanager.admin     - WordPress secrets
+#   cloudscheduler.admin    - backup job
+#   networksAdmin           - Private Service Access (Cloud SQL private IP)
+#   logging.logWriter       - build logs (CLOUD_LOGGING_ONLY)
+#   iam.roleAdmin           - custom role of the backup function
+#   serviceAccountAdmin     - workload service accounts
+#   serviceAccountUser      - attach those service accounts to VMs and the function
+#   projectIamAdmin         - project-level IAM bindings
 
-# IAP — Packer reaches its temporary build VM through an IAP tunnel (no external IP)
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/iap.tunnelResourceAccessor"
-
-# Cloud SQL — instances, databases, users
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/cloudsql.admin"
-
-# Cloud Functions v2
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/cloudfunctions.admin"
-
-# Cloud Run — required because Cloud Functions v2 runs on top of Cloud Run
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/run.admin"
-
-# Cloud Storage — application buckets (backups, function scripts)
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/storage.admin"
-
-# Secret Manager — Terraform creates and manages WordPress secrets
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/secretmanager.admin"
-
-# Cloud Scheduler — jobs that invoke the backup function
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/cloudscheduler.admin"
-
-# Service Networking — required to manage Private Service Access (Cloud SQL VPC peering)
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/servicenetworking.networksAdmin"
-
-# Cloud Logging — required to write build logs when using CLOUD_LOGGING_ONLY
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/logging.logWriter"
-
-# IAM — custom role management (required for google_project_iam_custom_role resources)
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/iam.roleAdmin"
-
-# IAM — Terraform creates service accounts and assigns roles to resources
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/iam.serviceAccountAdmin"
-
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/iam.serviceAccountUser"
-
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/resourcemanager.projectIamAdmin"
+# Packer: create the temporary build VM and the image, and reach the VM through IAP. The VM runs
+# without a service account (packer/wordpress.pkr.hcl), so iam.serviceAccountUser is not needed.
+grant_roles "${PACKER_SA}" \
+  roles/compute.instanceAdmin.v1 \
+  roles/iap.tunnelResourceAccessor \
+  roles/logging.logWriter
 
 # ==============================================================
-# Bucket-level IAM binding — scoped to the state bucket only
+# Bucket-level IAM bindings — scoped to the state bucket only
+# Plan and apply both write it: the state lock, and the saved plans under plans/.
 # ==============================================================
-gcloud storage buckets add-iam-policy-binding gs://${STATE_BUCKET} \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/storage.objectAdmin"
+for sa in "${PLAN_SA}" "${APPLY_SA}"; do
+  gcloud storage buckets add-iam-policy-binding gs://${STATE_BUCKET} \
+    --member="serviceAccount:${sa}" \
+    --role="roles/storage.objectAdmin" >/dev/null
+  echo "  ${sa}: roles/storage.objectAdmin on gs://${STATE_BUCKET}"
+done
 
-echo "Service account ${CB_SA} created and configured successfully."
+echo "Pipeline service accounts created and configured successfully."
 
 # ==============================================================
 # Cloud Build triggers
@@ -227,8 +234,8 @@ fi
 # Packer trigger — fires on push to main only when packer/ files change.
 # Builds a new golden image and registers it under the wp-blueprint-web image family.
 # NOT triggered on PRs — Packer creates real GCP resources and takes about 5 minutes.
-# _USE_IAP=true: the build VM has no external IP and Packer connects through an IAP tunnel.
-# This needs the management VPC, so the trigger only works after the first terraform apply.
+# _USE_IAP=true: the build VM runs in the build subnet, has no external IP, and Packer connects through
+# an IAP tunnel. That subnet is created by Terraform, so the trigger only works after the first apply.
 gcloud builds triggers create github \
   --project=${PROJECT_ID} \
   --name="wp-blueprint-image-build-${ENVIRONMENT}" \
@@ -237,8 +244,8 @@ gcloud builds triggers create github \
   --branch-pattern="^main$" \
   --included-files="packer/**" \
   --build-config="cloudbuild/packer.yaml" \
-  --substitutions="_PROJECT_ID=${PROJECT_ID},_ZONE=europe-west1-b,_NETWORK=wordpress-mgmt-vpc,_SUBNETWORK=wordpress-mgmt-subnet,_USE_IAP=true" \
-  --service-account="projects/${PROJECT_ID}/serviceAccounts/${CB_SA}"
+  --substitutions="_PROJECT_ID=${PROJECT_ID},_ZONE=europe-west1-b,_ENVIRONMENT=${ENVIRONMENT},_USE_IAP=true" \
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/${PACKER_SA}"
 
 # PR plan trigger — fires automatically on every PR targeting main.
 # Runs terraform-plan.yaml: init, fmt, validate, plan, destructive change report.
@@ -251,7 +258,7 @@ gcloud builds triggers create github \
   --pull-request-pattern="^main$" \
   --build-config="cloudbuild/terraform-plan.yaml" \
   --substitutions="_PROJECT_ID=${PROJECT_ID},_STATE_BUCKET=${STATE_BUCKET},_IAP_USER_EMAIL=${IAP_USER_EMAIL},_SAVE_PLAN=false" \
-  --service-account="projects/${PROJECT_ID}/serviceAccounts/${CB_SA}"
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/${PLAN_SA}"
 
 # Main plan trigger — fires on push to main (a merged PR) when terraform/ files change.
 # Same pipeline with _SAVE_PLAN=true: the plan is uploaded to gs://STATE_BUCKET/plans/BUILD_ID/.
@@ -265,7 +272,7 @@ gcloud builds triggers create github \
   --included-files="terraform/**" \
   --build-config="cloudbuild/terraform-plan.yaml" \
   --substitutions="_PROJECT_ID=${PROJECT_ID},_STATE_BUCKET=${STATE_BUCKET},_IAP_USER_EMAIL=${IAP_USER_EMAIL},_SAVE_PLAN=true" \
-  --service-account="projects/${PROJECT_ID}/serviceAccounts/${CB_SA}"
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/${PLAN_SA}"
 
 # Apply trigger — triggered manually after reviewing the plan generated on main.
 # Requires --require-approval so no one can run it without explicit approval.
@@ -279,7 +286,7 @@ gcloud beta builds triggers create manual \
   --branch="main" \
   --build-config="cloudbuild/terraform-apply.yaml" \
   --substitutions="_PROJECT_ID=${PROJECT_ID},_STATE_BUCKET=${STATE_BUCKET},_PLAN_BUILD_ID=REPLACE_WITH_PLAN_BUILD_ID,_ALLOW_DESTRUCTIVE=false" \
-  --service-account="projects/${PROJECT_ID}/serviceAccounts/${CB_SA}" \
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/${APPLY_SA}" \
   --require-approval
 
 echo "Triggers created successfully."

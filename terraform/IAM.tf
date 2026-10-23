@@ -10,6 +10,7 @@
 #        3.4 Backup function — runtime
 #        3.5 Backup function — build
 #        3.6 Cloud Scheduler
+#        3.7 Pipeline — plan
 #
 # The "serviceAccount:<email>" member strings are defined in locals.tf (local.service_accounts).
 
@@ -212,4 +213,36 @@ resource "google_cloud_run_v2_service_iam_member" "fn_invoker_binding" {
   name     = google_cloudfunctions2_function.db_backup_fn.name
   role     = "roles/run.invoker"
   member   = local.service_accounts.scheduler
+}
+
+# ------------------------------------------
+# 3.7 Pipeline — plan
+#
+# The plan service account is read-only and created by configs/setup.sh with project-wide read roles.
+# These bindings add what the plan reads beyond them, each scoped to one resource. Terraform creates
+# them because the resources are created by Terraform: on the first plan none of them exists yet,
+# and nothing has to be read.
+# ------------------------------------------
+
+# Read the database password. It is read by an ephemeral block (database.tf), which Terraform opens
+# during plan as well as apply. Only this secret: the plan never needs the others' values.
+resource "google_secret_manager_secret_iam_member" "pipeline_plan_db_password_access" {
+  project   = var.project_id
+  role      = "roles/secretmanager.secretAccessor"
+  secret_id = google_secret_manager_secret.wordpress_secrets[local.db_password_secret_name].id
+  member    = local.service_accounts.pipeline_plan
+}
+
+# Read the objects Terraform manages, to refresh them: the function source zip and the uploads folder
+# marker. roles/viewer lets the plan see the buckets but not read objects.
+resource "google_storage_bucket_iam_member" "pipeline_plan_fn_source_viewer" {
+  bucket = google_storage_bucket.fn_source.name
+  role   = "roles/storage.objectViewer"
+  member = local.service_accounts.pipeline_plan
+}
+
+resource "google_storage_bucket_iam_member" "pipeline_plan_uploads_viewer" {
+  bucket = google_storage_bucket.uploads.name
+  role   = "roles/storage.objectViewer"
+  member = local.service_accounts.pipeline_plan
 }
