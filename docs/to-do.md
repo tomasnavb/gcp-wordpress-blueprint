@@ -136,7 +136,7 @@ Changes to take the project from a portfolio deployment to one configured and do
 | T41 | Shielded VM and enforced OS Login on the instances | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 | T42 | Cloud Armor: OWASP rules, and rate limiting on `wp-login.php` and `xmlrpc.php` | 2026-10-14 | `pending` | Production review of 2026-10-14; implemented in R26 |
 | T43 | README: monthly cost estimate, and portfolio notes removed once the values are production ones | 2026-10-14 | `pending` | Production review of 2026-10-14 |
-| T44 | Optional, only if justified: a cross-region Cloud SQL replica for disaster recovery, Memorystore as object cache if measurements call for it | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T44 | Optional, only if justified: a cross-region Cloud SQL replica for disaster recovery, Memorystore as object cache if measurements call for it, an edge security policy on the uploads backend bucket with a rate limit per IP if mass downloading or egress cost calls for it (devlog 2026-10-25) | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 
 ## Done
 
