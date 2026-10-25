@@ -174,6 +174,14 @@ resource "google_compute_backend_service" "mig" {
   # Cloud Armor runs on every request that reaches the instances (a cache hit never does).
   security_policy = google_compute_security_policy.wordpress.id
 
+  # Request logs of the load balancer. Cloud Armor records its decisions in them: the WAF matches of
+  # rules in preview, and the rate limit and ban outcomes of the login rule. Without them neither can be
+  # reviewed or tuned. Every request is logged: the site has little traffic, so the cost is small.
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+
   # Cloud CDN for what WordPress serves from the image: theme and plugin CSS, JavaScript, fonts and images.
   # CACHE_ALL_STATIC caches static content types, and never a response with Set-Cookie or
   # Cache-Control: private or no-store, nor HTML without caching headers. That keeps pages of logged-in
