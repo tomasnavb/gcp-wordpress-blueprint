@@ -8,3 +8,8 @@ variable "domain_names" {
   description = "Domain names included in the Google-managed SSL certificate of the load balancer. Each needs a DNS A record pointing to the load balancer IP"
   type        = list(string)
 }
+
+variable "waf_preview" {
+  description = "true: the preconfigured Cloud Armor WAF rules only log what they would block, to review false positives. false: they block. The xmlrpc.php block and the login rate limit always apply"
+  type        = bool
+}

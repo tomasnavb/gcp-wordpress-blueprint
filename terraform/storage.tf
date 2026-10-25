@@ -55,6 +55,11 @@ resource "google_storage_bucket" "fn_source" {
 # (gcsfuse, --only-dir), so a file uploaded through one instance is visible from all of them, and
 # survives when the MIG replaces an instance. Anything private goes in another bucket.
 #
+# Visitors get the uploads from the load balancer, not from the instances: /wp-content/uploads/* is
+# routed to a backend bucket with Cloud CDN (modules/global_external_lb). The bucket stays private:
+# the load balancer reads it with a Google-managed service account (Private Bucket Access), so public
+# access prevention stays enforced like on every other bucket.
+#
 # - The name is fixed in locals.tf, not a variable (see the comment there).
 # - Same region as the instances, for latency and to avoid inter-region traffic.
 # - force_destroy = false and protected in cloudbuild/scripts/check_destructive.py: it holds data.

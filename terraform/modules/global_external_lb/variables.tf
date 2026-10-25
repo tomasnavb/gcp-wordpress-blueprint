@@ -92,3 +92,83 @@ variable "capacity_scaler" {
   description = "Multiplier applied to the backend's capacity (1.0 = 100%)"
   type        = number
 }
+
+variable "project_number" {
+  description = "Project number. Builds the name of the Google-managed service account the load balancer reads the private uploads bucket with"
+  type        = string
+}
+
+variable "uploads_bucket_name" {
+  description = "Cloud Storage bucket with the WordPress uploads, served through a backend bucket with Cloud CDN"
+  type        = string
+}
+
+variable "uploads_path" {
+  description = "URL path routed to the uploads bucket instead of the instances (e.g. /wp-content/uploads/*)"
+  type        = string
+}
+
+variable "uploads_cdn_default_ttl" {
+  description = "Seconds Cloud CDN caches an upload (FORCE_CACHE_ALL applies this TTL to every response)"
+  type        = number
+}
+
+variable "uploads_cdn_client_ttl" {
+  description = "Maximum seconds browsers may cache an upload"
+  type        = number
+}
+
+variable "backend_cdn_default_ttl" {
+  description = "Seconds Cloud CDN caches a static response from the instances that sets no TTL of its own"
+  type        = number
+}
+
+variable "backend_cdn_max_ttl" {
+  description = "Maximum seconds Cloud CDN caches a response from the instances, whatever TTL it sets"
+  type        = number
+}
+
+variable "backend_cdn_client_ttl" {
+  description = "Maximum seconds browsers may cache a static response from the instances"
+  type        = number
+}
+
+variable "waf_rule_sets" {
+  description = "Preconfigured Cloud Armor WAF rule sets to evaluate, e.g. sqli-v33-stable. One rule per set"
+  type        = list(string)
+}
+
+variable "waf_sensitivity" {
+  description = "Sensitivity level of the preconfigured WAF rules (1 = fewest false positives)"
+  type        = number
+}
+
+variable "waf_preview" {
+  description = "true: WAF rules only log what they would block. false: they block"
+  type        = bool
+}
+
+variable "login_rate_limit_count" {
+  description = "Login attempts (POST to wp-login.php) allowed per client IP in each interval"
+  type        = number
+}
+
+variable "login_rate_limit_interval_sec" {
+  description = "Interval in seconds of the login rate limit"
+  type        = number
+}
+
+variable "login_ban_threshold_count" {
+  description = "Login attempts per client IP within login_ban_interval_sec that get the IP banned"
+  type        = number
+}
+
+variable "login_ban_interval_sec" {
+  description = "Interval in seconds over which login_ban_threshold_count is counted"
+  type        = number
+}
+
+variable "login_ban_duration_sec" {
+  description = "Seconds a banned IP gets a 429 on every login attempt"
+  type        = number
+}

@@ -67,6 +67,10 @@ lb_use_reserved_ip = true
 # once their DNS A records point to the load balancer IP. Replace with your own.
 domain_names = ["wordpress.tomasnavarro.dev"]
 
+# Cloud Armor WAF rules in preview: they only log what they would block. Review the matches in the
+# load balancer logs, then set to false to enforce them.
+waf_preview = true
+
 # ==============================================================
 # DATABASE
 # instance_tier reduced for portfolio cost (prod recommendation: db-custom-4-16384)

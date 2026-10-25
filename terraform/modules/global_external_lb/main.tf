@@ -3,18 +3,24 @@ locals {
 
   # Every resource is named <name_prefix>-<component>-<environment>, following the naming convention.
   names = {
-    ip            = "${var.name_prefix}-ip-${var.environment}"
-    ssl_policy    = "${var.name_prefix}-ssl-policy-${var.environment}"
-    https_rule    = "${var.name_prefix}-https-fr-${var.environment}"
-    http_rule     = "${var.name_prefix}-http-fr-${var.environment}"
-    https_proxy   = "${var.name_prefix}-https-proxy-${var.environment}"
-    http_proxy    = "${var.name_prefix}-http-proxy-${var.environment}"
-    url_map       = "${var.name_prefix}-url-map-${var.environment}"
-    redirect      = "${var.name_prefix}-redirect-${var.environment}"
-    backend       = "${var.name_prefix}-backend-${var.environment}"
-    health_check  = "${var.name_prefix}-hc-${var.environment}"
-    firewall_rule = "${var.name_prefix}-allow-google-fe-${var.environment}"
+    ip              = "${var.name_prefix}-ip-${var.environment}"
+    ssl_policy      = "${var.name_prefix}-ssl-policy-${var.environment}"
+    https_rule      = "${var.name_prefix}-https-fr-${var.environment}"
+    http_rule       = "${var.name_prefix}-http-fr-${var.environment}"
+    https_proxy     = "${var.name_prefix}-https-proxy-${var.environment}"
+    http_proxy      = "${var.name_prefix}-http-proxy-${var.environment}"
+    url_map         = "${var.name_prefix}-url-map-${var.environment}"
+    redirect        = "${var.name_prefix}-redirect-${var.environment}"
+    backend         = "${var.name_prefix}-backend-${var.environment}"
+    health_check    = "${var.name_prefix}-hc-${var.environment}"
+    firewall_rule   = "${var.name_prefix}-allow-google-fe-${var.environment}"
+    uploads_backend = "${var.name_prefix}-uploads-backend-${var.environment}"
+    security_policy = "${var.name_prefix}-armor-${var.environment}"
   }
+
+  # Service account the load balancer and Cloud CDN read private buckets with (Private Bucket Access).
+  # Google creates it once the project has its first backend bucket.
+  lb_bucket_reader = "serviceAccount:service-${var.project_number}@https-lb.iam.gserviceaccount.com"
 
   # Same name in both modes: the address this module creates, or the one reserved beforehand
   # that it looks up. Either way the forwarding rules use local.ip_address.
@@ -117,10 +123,27 @@ resource "google_compute_target_http_proxy" "http" {
   url_map = google_compute_url_map.http_redirect.id
 }
 
-# URL map that handles incoming traffic and matches hostname/path rules to the production backend service
+# URL map of the HTTPS proxy. Uploads go to the bucket, everything else to WordPress on the MIG.
+# No URL rewrite: the objects are stored under the same path WordPress serves them from, so a request
+# for /wp-content/uploads/2026/10/photo.jpg reads the object wp-content/uploads/2026/10/photo.jpg.
 resource "google_compute_url_map" "external_lb_url_map" {
   name            = local.names.url_map
   default_service = google_compute_backend_service.mig.self_link
+
+  host_rule {
+    hosts        = ["*"]
+    path_matcher = "wordpress"
+  }
+
+  path_matcher {
+    name            = "wordpress"
+    default_service = google_compute_backend_service.mig.self_link
+
+    path_rule {
+      paths   = [var.uploads_path]
+      service = google_compute_backend_bucket.uploads.self_link
+    }
+  }
 }
 
 # URL map dedicated to issuing a permanent 301 redirect for all plain HTTP traffic towards HTTPS
@@ -148,6 +171,22 @@ resource "google_compute_backend_service" "mig" {
 
   health_checks = [google_compute_health_check.backend_health_check.self_link]
 
+  # Cloud Armor runs on every request that reaches the instances (a cache hit never does).
+  security_policy = google_compute_security_policy.wordpress.id
+
+  # Cloud CDN for what WordPress serves from the image: theme and plugin CSS, JavaScript, fonts and images.
+  # CACHE_ALL_STATIC caches static content types, and never a response with Set-Cookie or
+  # Cache-Control: private or no-store, nor HTML without caching headers. That keeps pages of logged-in
+  # users and the admin area out of the cache. FORCE_CACHE_ALL is ruled out here: it ignores those
+  # headers and could serve one user's page to another.
+  enable_cdn = true
+  cdn_policy {
+    cache_mode  = "CACHE_ALL_STATIC"
+    default_ttl = var.backend_cdn_default_ttl
+    max_ttl     = var.backend_cdn_max_ttl
+    client_ttl  = var.backend_cdn_client_ttl
+  }
+
   backend {
     group                 = var.mig_instance_group
     balancing_mode        = var.balancing_mode
@@ -166,8 +205,128 @@ resource "google_compute_health_check" "backend_health_check" {
   }
 }
 
+# Backend bucket: WordPress uploads, served straight from Cloud Storage through Cloud CDN, without going
+# through the instances. The bucket stays private (Private Bucket Access, below).
+#
+# FORCE_CACHE_ALL is required to cache a private bucket (Cloud CDN documentation, private bucket
+# access). It is safe here: a bucket returns the same object to everyone who requests a URL, with no
+# per-user responses. The pages of logged-in users are served by the backend service above, which
+# keeps CACHE_ALL_STATIC. With FORCE_CACHE_ALL the TTL applied is default_ttl.
+resource "google_compute_backend_bucket" "uploads" {
+  name        = local.names.uploads_backend
+  bucket_name = var.uploads_bucket_name
+  enable_cdn  = true
+
+  cdn_policy {
+    cache_mode  = "FORCE_CACHE_ALL"
+    default_ttl = var.uploads_cdn_default_ttl
+    client_ttl  = var.uploads_cdn_client_ttl
+  }
+}
+
+# Private Bucket Access: the load balancer reads the uploads bucket with a Google-managed service
+# account, so the bucket needs no public access and public access prevention stays enforced. Objects
+# can only be read through the load balancer, behind Cloud CDN. Read-only.
+# depends_on: the service account only exists once the project has a backend bucket.
+resource "google_storage_bucket_iam_member" "lb_uploads_reader" {
+  bucket = var.uploads_bucket_name
+  role   = "roles/storage.objectViewer"
+  member = local.lb_bucket_reader
+
+  depends_on = [google_compute_backend_bucket.uploads]
+}
+
 # ==========================================
-# 4. FIREWALL
+# 4. CLOUD ARMOR
+# ==========================================
+
+# Security policy of the backend service, evaluated on every request that reaches the instances.
+# Rules are evaluated by priority, lowest number first; the first match decides.
+resource "google_compute_security_policy" "wordpress" {
+  name        = local.names.security_policy
+  description = "WordPress: blocks xmlrpc.php, limits and bans login attempts, preconfigured WAF rules"
+  type        = "CLOUD_ARMOR"
+
+  # Path expressions are regular expressions: anchored at the start, "/+" also catches repeated
+  # slashes, and "[.]" is a literal dot without backslash escaping. No end anchor: PHP also runs
+  # /xmlrpc.php/anything.
+
+  # xmlrpc.php: a classic brute force target, not used by this site. Blocked, not rate limited:
+  # system.multicall tries hundreds of passwords in a single request.
+  rule {
+    action      = "deny(403)"
+    priority    = 100
+    description = "Block xmlrpc.php"
+    match {
+      expr {
+        expression = "request.path.matches('^/+xmlrpc[.]php')"
+      }
+    }
+  }
+
+  # Login attempts per client IP. Only POST: loading the login page is not an attempt.
+  # Attempts over rate_limit_threshold get a 429. An IP that goes over ban_threshold is banned for
+  # ban_duration_sec: every login attempt from it gets a 429 until then. The rest of the site keeps
+  # working for that IP.
+  rule {
+    action      = "rate_based_ban"
+    priority    = 200
+    description = "Rate limit and ban login attempts per IP"
+    match {
+      expr {
+        expression = "request.path.matches('^/+wp-login[.]php') && request.method == 'POST'"
+      }
+    }
+    rate_limit_options {
+      conform_action   = "allow"
+      exceed_action    = "deny(429)"
+      enforce_on_key   = "IP"
+      ban_duration_sec = var.login_ban_duration_sec
+      rate_limit_threshold {
+        count        = var.login_rate_limit_count
+        interval_sec = var.login_rate_limit_interval_sec
+      }
+      ban_threshold {
+        count        = var.login_ban_threshold_count
+        interval_sec = var.login_ban_interval_sec
+      }
+    }
+  }
+
+  # Preconfigured WAF rules (OWASP Core Rule Set 4.22), one rule per rule set.
+  # With waf_preview they only log what they would block: the WordPress admin area sends HTML and
+  # scripts that can look like attacks, so matches are reviewed in the logs before enforcing them.
+  dynamic "rule" {
+    for_each = { for index, rule_set in var.waf_rule_sets : rule_set => index }
+    content {
+      action      = "deny(403)"
+      priority    = 1000 + rule.value
+      description = "Preconfigured WAF: ${rule.key}"
+      preview     = var.waf_preview
+      match {
+        expr {
+          expression = "evaluatePreconfiguredWaf('${rule.key}', {'sensitivity': ${var.waf_sensitivity}})"
+        }
+      }
+    }
+  }
+
+  # Default rule, required by Cloud Armor: allow what no rule above matched.
+  rule {
+    action      = "allow"
+    priority    = 2147483647
+    description = "Default rule: allow"
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+  }
+}
+
+# ==========================================
+# 5. FIREWALL
 # ==========================================
 
 # Lets the Google front ends reach the backends. This single rule covers both the health check

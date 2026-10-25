@@ -112,6 +112,50 @@ module "global_external_lb" {
   ssl_policy_profile = "MODERN"
   min_tls_version    = "TLS_1_2"
 
+  # Uploads served from the bucket (backend bucket with Cloud CDN, Private Bucket Access)
+  project_number      = data.google_project.this.number
+  uploads_bucket_name = google_storage_bucket.uploads.name
+  uploads_path        = "/${local.uploads_folder}/*"
+
+  # Cloud CDN. A new upload gets a new file name, so it is never served stale. The TTL bounds how long
+  # a deleted or overwritten upload keeps being served: an hour, in Cloud CDN and in browsers. For an
+  # urgent removal, invalidate the path in Cloud CDN (README, Operations); browsers keep their copy
+  # up to the client TTL. Static responses from the instances follow their own headers, an hour by
+  # default.
+  uploads_cdn_default_ttl = 3600
+  uploads_cdn_client_ttl  = 3600
+  backend_cdn_default_ttl = 3600
+  backend_cdn_max_ttl     = 86400
+  backend_cdn_client_ttl  = 3600
+
+  # Cloud Armor. OWASP Core Rule Set 4.22, the version Google recommends. Sensitivity 1 gives the fewest
+  # false positives. Rule sets for the stack this site runs (PHP on Apache) and generic attacks; java is left out.
+  waf_rule_sets = [
+    "sqli-v422-stable",
+    "xss-v422-stable",
+    "lfi-v422-stable",
+    "rfi-v422-stable",
+    "rce-v422-stable",
+    "php-v422-stable",
+    "scannerdetection-v422-stable",
+    "protocolattack-v422-stable",
+    "methodenforcement-v422-stable",
+    "sessionfixation-v422-stable",
+    "generic-v422-stable",
+  ]
+  waf_sensitivity = 1
+  waf_preview     = var.waf_preview
+  # Login, per IP: 5 attempts per minute, a 429 over that. An IP that keeps pushing past the limit, over
+  # 50 attempts in 10 minutes (the most the limit lets through in that window), is banned for 30 minutes.
+  # Starting values from Cloud Armor's login example, common WordPress guidance and OWASP lockout
+  # durations; tune them with the RATE_LIMIT_THRESHOLD_EXCEED and BAN_THRESHOLD_EXCEED entries of the
+  # load balancer logs.
+  login_rate_limit_count        = 5
+  login_rate_limit_interval_sec = 60
+  login_ban_threshold_count     = 50
+  login_ban_interval_sec        = 600
+  login_ban_duration_sec        = 1800
+
   # LB configuration
   http_health_check_port    = var.health_check_port
   health_check_request_path = var.request_path
@@ -120,4 +164,10 @@ module "global_external_lb" {
   balancing_mode            = "RATE"
   max_rate_per_instance     = 100
   capacity_scaler           = 1.0
+}
+
+# Project number, for the name of the Google-managed service account the load balancer reads the
+# uploads bucket with. Read from the API, never written in the code.
+data "google_project" "this" {
+  project_id = var.project_id
 }
