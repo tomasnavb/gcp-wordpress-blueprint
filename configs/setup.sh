@@ -11,6 +11,7 @@ set -e
 export PROJECT_ID="${PROJECT_ID:-your-gcp-project-id}"
 export ENVIRONMENT="${ENVIRONMENT:-prod}"   # environment in terraform/terraform.tfvars; part of the names below
 export STATE_BUCKET="${PROJECT_ID}-tfstate"   # passed to terraform init via -backend-config in Cloud Build
+export SOURCE_BUCKET="${PROJECT_ID}_cloudbuild"   # where gcloud builds submit uploads the source (fixed by gcloud)
 export REGION="europe-west1"
 # Pipeline service accounts, one per job (created below):
 #   plan   - read-only, runs the plans of pull requests and of main. A plan runs code from the PR.
@@ -87,6 +88,22 @@ gcloud storage buckets update gs://${STATE_BUCKET} \
   --lifecycle-file=/tmp/lifecycle.json
 
 echo "Bucket gs://${STATE_BUCKET} created successfully."
+
+# ==============================================================
+# Cloud Build source bucket
+# gcloud builds submit (the first deploy, Steps 6 to 8 of the README) uploads the local directory
+# to gs://<project_id>_cloudbuild, and the build starts by reading it with the service account it
+# runs as. gcloud creates the bucket on the first submit if it does not exist; it is created here so
+# that the pipeline service accounts can be granted read access on it below. Triggers do not use it:
+# they fetch the source from GitHub.
+# ==============================================================
+if ! gcloud storage buckets describe gs://${SOURCE_BUCKET} --project=${PROJECT_ID} >/dev/null 2>&1; then
+  gcloud storage buckets create gs://${SOURCE_BUCKET} \
+    --project=${PROJECT_ID} \
+    --location=${REGION} \
+    --uniform-bucket-level-access
+fi
+echo "Bucket gs://${SOURCE_BUCKET} ready."
 
 # ==============================================================
 # Static IP for the load balancer (optional, see RESERVE_LB_IP above)
@@ -201,7 +218,7 @@ grant_roles "${PACKER_SA}" \
   roles/logging.logWriter
 
 # ==============================================================
-# Bucket-level IAM bindings — scoped to the state bucket only
+# Bucket-level IAM bindings — scoped to the state and source buckets only
 # Plan and apply both write it: the state lock, and the saved plans under plans/.
 # ==============================================================
 for sa in "${PLAN_SA}" "${APPLY_SA}"; do
@@ -209,6 +226,15 @@ for sa in "${PLAN_SA}" "${APPLY_SA}"; do
     --member="serviceAccount:${sa}" \
     --role="roles/storage.objectAdmin" >/dev/null
   echo "  ${sa}: roles/storage.objectAdmin on gs://${STATE_BUCKET}"
+done
+
+# Read the source that gcloud builds submit uploads. Only plan and Packer need it: apply already
+# reads every bucket with roles/storage.admin.
+for sa in "${PLAN_SA}" "${PACKER_SA}"; do
+  gcloud storage buckets add-iam-policy-binding gs://${SOURCE_BUCKET} \
+    --member="serviceAccount:${sa}" \
+    --role="roles/storage.objectViewer" >/dev/null
+  echo "  ${sa}: roles/storage.objectViewer on gs://${SOURCE_BUCKET}"
 done
 
 echo "Pipeline service accounts created and configured successfully."

@@ -193,6 +193,15 @@ resource "google_compute_backend_service" "mig" {
     default_ttl = var.backend_cdn_default_ttl
     max_ttl     = var.backend_cdn_max_ttl
     client_ttl  = var.backend_cdn_client_ttl
+
+    # Cache key: protocol, host and the full URL with its query string, as Cloud CDN does by default.
+    # The provider requires the block to be explicit. The query string matters: WordPress versions
+    # theme and plugin assets with ?ver=, so a new version gets a new cache entry instead of the old one.
+    cache_key_policy {
+      include_protocol     = true
+      include_host         = true
+      include_query_string = true
+    }
   }
 
   backend {

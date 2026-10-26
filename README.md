@@ -67,7 +67,7 @@ bash configs/delete-default-network.sh
 
 *Not shown: `build-subnet-prod-europe-west1`, a subnet of the same VPC that only hosts the ephemeral Packer VM during an image build (see [Immutable Infrastructure with Packer](#immutable-infrastructure-with-packer)).*
 
-The diagram follows the [GCP diagram style guide and naming conventions](https://tomasnavarro.hashnode.dev/gcp-diagram-style-guide-and-naming-conventions-by-tomas-navarro) used across my projects.
+The diagram follows the [GCP diagram style guide and naming conventions](https://tomasnavarro.hashnode.dev/gcp-diagram-style-guide-and-naming-conventions-by-tomas-navarro).
 
 ### Overview
 
@@ -447,6 +447,7 @@ bash configs/setup.sh
 This creates:
 - The APIs Terraform needs before it can enable the rest (`serviceusage`, `cloudresourcemanager`, `iam`, `cloudbuild`, `compute`)
 - Terraform state bucket (`<project_id>-tfstate`) with versioning and 30-day plan artifact lifecycle
+- Cloud Build source bucket (`<project_id>_cloudbuild`), where `gcloud builds submit` uploads the local directory in Steps 6 to 8. The build reads it with the service account it runs as, so `terraform-plan-sa` and `packer-build-sa` get read access on it (`terraform-apply-sa` already has it). Triggers do not use it: they fetch the source from GitHub
 - The pipeline service accounts `terraform-plan-sa`, `terraform-apply-sa` and `packer-build-sa`, each with its roles (see [One Service Account per Pipeline Job](#one-service-account-per-pipeline-job))
 - Four Cloud Build triggers: `wp-blueprint-image-build-prod`, `wp-blueprint-tf-plan-pr-prod`, `wp-blueprint-tf-plan-main-prod`, `wp-blueprint-tf-apply-prod`
 - With `RESERVE_LB_IP=true`, a global static IP for the load balancer (`wp-blueprint-lb-ip-prod`)
