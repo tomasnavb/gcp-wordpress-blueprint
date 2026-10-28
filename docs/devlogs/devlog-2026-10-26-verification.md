@@ -124,3 +124,43 @@ While running them, `gcloud projects get-ancestors ... --filter=type=organizatio
 Two points the documentation does not state and that this deploy confirms or not: that the legacy constraint keeps rejecting the binding while the managed one is enforced (the reason for the reset), and whether the organization principal set, which includes "all service agents associated with resources in your organization", would have covered the `https-lb` service agent without the explicit exception.
 
 Sources: [Restrict identities with domain-restricted sharing](https://docs.cloud.google.com/organization-policy/restrict-domains), [Create organization policies](https://docs.cloud.google.com/organization-policy/create-organization-policies).
+
+### E4 — A bot completed the WordPress installer before the operator
+
+After the apply that failed on E3, the load balancer and the instances were already up. WordPress was configured but not installed, so `/wp-admin/install.php` was open to anyone. When the operator opened the site, it was already installed, with an admin account and a site title that were not theirs, and their own logins failed.
+
+**Timeline** (UTC, 2026-10-27), from the load balancer request logs:
+
+```bash
+gcloud logging read 'resource.type="http_load_balancer" AND httpRequest.requestUrl:"install.php"' \
+  --project=gcp-wordpress-test-deploy --freshness=1d --limit=200 \
+  --format="table(timestamp, httpRequest.remoteIp, httpRequest.requestMethod, httpRequest.requestUrl, httpRequest.status)"
+```
+
+| Time | Source | Request | Status | What it is |
+|---|---|---|---|---|
+| from 04:05 | many IPs | `GET /wp-admin/install.php` with the IP, Google's reverse DNS name or a third-party domain as `Host` | 200 | Scanners sweeping cloud IP ranges |
+| 05:13 | — | First request with the site's domain as `Host` | 200 | The domain is known, most likely from Certificate Transparency logs |
+| 06:33:31 | `103.140.79.142` | `GET /wp-admin/install.php` | 200 | Opens the installer |
+| **06:33:53** | **`103.140.79.142`** | **`POST /wp-admin/install.php?step=2`** | **200** | **Completes the installation: admin account and site title** |
+| 06:34:02 | `103.140.79.142` | `POST /wp-login.php` | 302 | Logs in |
+| 06:34:16 | `103.140.79.142` | `GET /wp-admin/theme-editor.php?file=patterns/hidden-404.php&theme=twentytwentyfour` | **403** | Tries to edit a theme file to run PHP; blocked by `DISALLOW_FILE_MODS` |
+| 06:34:21 | `103.140.79.142` | `GET /wp-admin/install.php` | 200 | Checks the installation and leaves |
+| 12:21 | `212.28.183.175` | `POST /wp-login.php` | 200 | Failed login (200 is the login form shown again) |
+| 12:24–12:26 | `<operator-ip>` | `POST /wp-login.php` | 200 | The operator's failed logins |
+
+Hosts seen in the sweep: the load balancer IP (`34.117.137.111`), its reverse DNS name (`111.137.117.34.bc.googleusercontent.com`) and `voice-api-prod-us-east-1.kroger.com`. All of them reached WordPress because the host rule of the URL map was `hosts = ["*"]`. Those requests were only `GET`s.
+
+**Cause.** A fresh WordPress was reachable before it was installed. The installer has no authentication: whoever completes it first owns the site. The successful request came with the site's own domain, so restricting the host rule would not have prevented it; it only removes the scanners that sweep by IP.
+
+**What held.** `DISALLOW_FILE_MODS` stopped the attempt to run PHP through the theme editor (evidence for T05). Instances are immutable and the uploads live in a private bucket served by the load balancer, so nothing written on the instance outlived it. The project was destroyed.
+
+**Fix** (next block, see the to-do):
+
+- The admin area (`/wp-admin/*`, which includes `install.php`) and `/wp-login.php` go to a second backend service on the same MIG, behind IAP. Only principals with `roles/iap.httpsResourceAccessor` reach them, from the first apply, so the installer is completed once by the operator through IAP.
+- The host rule takes `var.domain_names`. Any other `Host` goes to the URL map default, where a Cloud Armor rule answers 403.
+- `WP_HOME` and `WP_SITEURL` come from the instance metadata, so WordPress never builds its address from the `Host` header.
+
+Installing WordPress from the startup script with WP-CLI was considered and dropped. With two instances it needs a lock so that only one installs, and the admin credentials have to pass through Secret Manager and stay out of the startup logs. IAP removes the exposure without either, and protects the login afterwards too.
+
+Sources: [PortSwigger, HTTP Host header attacks](https://portswigger.net/web-security/host-header), [Wordfence, the WPSetup attack on fresh WordPress installs (2017)](https://www.wordfence.com/?p=17307).
