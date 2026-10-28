@@ -88,3 +88,39 @@ The same error is reported for `cdn_policy.0.cache_key_policy`.
 **Fix.** An explicit `cache_key_policy` with Cloud CDN's default key: protocol, host and query string. The query string matters because WordPress versions theme and plugin assets with `?ver=`, so a new version gets a new cache entry.
 
 The plan also shows warnings for the deprecated `enable_logging` attribute. They come from inside the official network module (`module.vpc.module.firewall_rules`), not from this code, and change nothing.
+
+### E3 — The organization rejects the load balancer's service agent on the uploads bucket
+
+Step 8, the first apply:
+
+```text
+Error: Error applying IAM policy to storage bucket "b/gcp-wordpress-test-deploy-uploads": Too many conflicts.  Latest error: Error setting IAM policy for storage bucket "b/gcp-wordpress-test-deploy-uploads": googleapi: Error 412: One or more users named in the policy do not belong to a permitted customer., conditionNotMet
+
+  with module.global_external_lb.google_storage_bucket_iam_member.lb_uploads_reader,
+  on modules/global_external_lb/main.tf line 248, in resource "google_storage_bucket_iam_member" "lb_uploads_reader":
+ 248: resource "google_storage_bucket_iam_member" "lb_uploads_reader" {
+```
+
+**Cause.** Not IAM propagation: an organization policy. The organization enforces domain restricted sharing (`iam.allowedPolicyMemberDomains`), on by default for organizations created since May 2024, so roles can only be granted to identities of the organization. The service agent the load balancer reads private buckets with, `service-<project-number>@https-lb.iam.gserviceaccount.com`, belongs to Google, not to the organization. "Too many conflicts" is Terraform retrying the same rejection. Making the bucket public instead would be rejected by the same policy (`allUsers`).
+
+**Options considered.**
+
+| Option | Outcome |
+|---|---|
+| Disable the legacy constraint, grant the role, enable it again (the documented workaround for it) | Not repeatable from Terraform: a manual step on every deploy |
+| Turn domain restricted sharing off for the project | Any outside identity could then get roles in it |
+| Serve the uploads from the instances again, without the backend bucket | Works, but loses serving the cache misses straight from Cloud Storage |
+| Replace the legacy constraint with the managed one in this project, with one exception | **Chosen**: the same restriction, plus one named exception |
+
+**Fix.** The legacy constraint accepts no exceptions for single principals; the managed constraint `iam.managed.allowedPolicyMembers` does (`allowedMemberSubjects`). The two are independent, so in this project only:
+
+1. the managed constraint is enforced with the organization (`allowedPrincipalSets`) and the `https-lb` service agent of the project (`allowedMemberSubjects`);
+2. then the legacy constraint is reset to its default, allow all (`gcloud org-policies reset`). The managed one replaces it; it goes second so that the project is never left without the restriction.
+
+A separate script, `configs/org-policy-exception.sh`, does both when the project is in an organization that enforces the legacy constraint, and does nothing otherwise: a project without an organization inherits no domain restricted sharing, so it never hits this error. It is kept out of `configs/setup.sh` on purpose: it is an organization-level change, with its own permission and risk, and the bootstrap should not fail for someone without that permission. It enables `orgpolicy.googleapis.com`, which `gcloud org-policies` needs, asks to type the project ID, and shows both effective policies at the end. It needs `roles/orgpolicy.policyAdmin` on the organization; owning the organization was not enough in this deploy, and the role had to be granted explicitly before running the commands. Terraform's apply service account does not have it and should not. The README describes it as Step 5b. In this project the commands were run by hand.
+
+While running them, `gcloud projects get-ancestors ... --filter=type=organization` failed with `unrecognized arguments: --filter=type=organization`: the command is not a list command and takes no filter. The script reads the organization ID from `--format="csv[no-heading](id,type)"` with `awk`, which also works when the project is inside a folder.
+
+Two points the documentation does not state and that this deploy confirms or not: that the legacy constraint keeps rejecting the binding while the managed one is enforced (the reason for the reset), and whether the organization principal set, which includes "all service agents associated with resources in your organization", would have covered the `https-lb` service agent without the explicit exception.
+
+Sources: [Restrict identities with domain-restricted sharing](https://docs.cloud.google.com/organization-policy/restrict-domains), [Create organization policies](https://docs.cloud.google.com/organization-policy/create-organization-policies).

@@ -37,6 +37,8 @@ export RESERVE_LB_IP="true"
 
 # 4. Bootstrap (Step 5); then point your domain's DNS A record to the IP it prints
 bash configs/setup.sh
+#    Only if the project is in an organization (Step 5b)
+bash configs/org-policy-exception.sh
 
 # 5. First image, plan and apply (Steps 6 to 8)
 SA_PREFIX="projects/${PROJECT_ID}/serviceAccounts"
@@ -261,6 +263,7 @@ gcp-wordpress-blueprint/
 ├── configs/
 │   ├── setup.sh                     # One-time bootstrap: APIs, state bucket, load balancer IP, pipeline SAs, IAM, triggers
 │   ├── destroy.sh                   # gcloud steps around terraform destroy: empty the data buckets, delete the peering if needed
+│   ├── org-policy-exception.sh      # Only in an organization with domain restricted sharing: exception for the load balancer
 │   └── delete-default-network.sh    # Optional, after the first apply: delete the default network and its firewall rules
 │
 ├── cloudbuild/
@@ -313,6 +316,13 @@ gcp-wordpress-blueprint/
 - A domain name whose DNS records you control (the managed certificate is issued for it)
 - [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (preinstalled in Cloud Shell)
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.15.7, only for the [Destroy](#destroy), which runs outside the pipeline. Check `terraform version` in Cloud Shell before using it
+- Only if the project is in an organization that enforces domain restricted sharing: `roles/orgpolicy.policyAdmin` on the organization, for [Step 5b](#step-5b-organization-policy-exception-only-if-the-project-is-in-an-organization). Owning the organization is not enough; grant it explicitly:
+
+  ```bash
+  gcloud organizations add-iam-policy-binding ORG_ID \
+    --member="user:you@example.com" \
+    --role="roles/orgpolicy.policyAdmin"
+  ```
 
 The CI/CD pipeline runs entirely on **Cloud Build** with pinned versions (Terraform 1.15.7, Packer 1.16.1) — Terraform and Packer are not required locally to deploy.
 
@@ -455,6 +465,21 @@ This creates:
 Before creating the triggers the script asks whether the repository is connected (Step 4). Answering anything but `y` skips the triggers.
 
 The script prints the reserved IP. **Create a DNS A record for your domain pointing to it now**: the certificate cannot be issued until that record resolves, so the sooner it propagates the better.
+
+#### Step 5b: Organization policy exception (only if the project is in an organization)
+
+Organizations created since May 2024 enforce **domain restricted sharing** (`iam.allowedPolicyMemberDomains`) by default: roles can only be granted to identities of the organization. The load balancer reads the private uploads bucket with a Google-managed service agent, `service-<project_number>@https-lb.iam.gserviceaccount.com`, which is not one of them, so the first apply fails on its binding with *"One or more users named in the policy do not belong to a permitted customer"*. A project without an organization inherits no such policy and can skip this step.
+
+```bash
+bash configs/org-policy-exception.sh
+```
+
+The legacy constraint accepts no exceptions for single principals, so the script replaces it in this project only:
+
+1. It enforces the managed constraint `iam.managed.allowedPolicyMembers`, allowing your organization plus that service agent.
+2. Then it resets the legacy constraint to its default. The managed one goes first, so the project is never left without the restriction.
+
+The restriction stays the same, with one named exception. The script does nothing when the project has no organization or the constraint is not enforced, asks to type the project ID before changing anything, and shows both effective policies at the end; the legacy one must show `allowAll: true`. Changes can take up to 15 minutes to apply, so wait before Step 7. It needs `roles/orgpolicy.policyAdmin` on the organization (see [Prerequisites](#prerequisites)).
 
 ---
 
