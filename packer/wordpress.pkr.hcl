@@ -1,8 +1,10 @@
 packer {
   required_plugins {
+    # Exact version: Packer has no lock file, so a range would let two builds of the same commit
+    # use different plugin versions. To upgrade, change it here and review it in a PR.
     googlecompute = {
       source  = "github.com/hashicorp/googlecompute"
-      version = "~> 1.1"
+      version = "1.2.7"
     }
   }
 }
@@ -56,10 +58,15 @@ build {
   name    = "wp-blueprint-web"
   sources = ["source.googlecompute.wordpress"]
 
-  # Step 1: upload installation script
+  # Step 1: upload the installation script and the checksums of everything it downloads
   provisioner "file" {
     source      = "packer/scripts/install.sh"
     destination = "/tmp/install.sh"
+  }
+
+  provisioner "file" {
+    source      = "packer/scripts/checksums.sha256"
+    destination = "/tmp/checksums.sha256"
   }
 
   # Step 2: run installation script
@@ -79,6 +86,9 @@ build {
       "php -l /var/www/html/wp-config.php",
       "grep -q HTTP_X_FORWARDED_PROTO /var/www/html/wp-config.php",
       "grep -q DISALLOW_FILE_MODS /var/www/html/wp-config.php",
+      "test -f /var/www/html/wp-content/languages/es_AR.mo",
+      "test -f /var/www/html/wp-content/languages/themes/twentytwentyfive-ja.mo",
+      "php -l /var/www/html/wp-content/mu-plugins/disable-application-passwords.php",
       "gcsfuse --version",
       "test -d /var/www/html/wp-content/uploads",
       "php -l /var/www/html/health.php",
