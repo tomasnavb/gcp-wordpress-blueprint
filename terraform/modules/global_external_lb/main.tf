@@ -12,11 +12,17 @@ locals {
     url_map         = "${var.name_prefix}-url-map-${var.environment}"
     redirect        = "${var.name_prefix}-redirect-${var.environment}"
     backend         = "${var.name_prefix}-backend-${var.environment}"
+    backend_iap     = "${var.name_prefix}-backend-iap-${var.environment}"
     health_check    = "${var.name_prefix}-hc-${var.environment}"
     firewall_rule   = "${var.name_prefix}-allow-google-fe-${var.environment}"
     uploads_backend = "${var.name_prefix}-uploads-backend-${var.environment}"
     security_policy = "${var.name_prefix}-armor-${var.environment}"
+    iap_policy      = "${var.name_prefix}-armor-iap-${var.environment}"
   }
+
+  # IAP is optional: with no protected paths there is no second backend service, no second security
+  # policy and no extra path rules, and the load balancer works with a single backend service.
+  iap_enabled = length(var.iap_protected_paths) > 0
 
   # Service account the load balancer and Cloud CDN read private buckets with (Private Bucket Access).
   # Google creates it once the project has its first backend bucket.
@@ -161,6 +167,26 @@ resource "google_compute_url_map" "external_lb_url_map" {
       paths   = [var.uploads_path]
       service = google_compute_backend_bucket.uploads.self_link
     }
+
+    # Protected paths go to the backend behind IAP. Path rules are matched by specificity, not by
+    # order: an exact path first, then the longest /* prefix, then the default of the path matcher.
+    dynamic "path_rule" {
+      for_each = local.iap_enabled ? [1] : []
+      content {
+        paths   = var.iap_protected_paths
+        service = google_compute_backend_service.mig_iap[0].self_link
+      }
+    }
+
+    # Paths under a protected prefix that the public site needs, such as /wp-admin/admin-ajax.php,
+    # stay on the public backend. They are exact paths, so they win over the protected prefix.
+    dynamic "path_rule" {
+      for_each = local.iap_enabled && length(var.iap_public_paths) > 0 ? [1] : []
+      content {
+        paths   = var.iap_public_paths
+        service = google_compute_backend_service.mig.self_link
+      }
+    }
   }
 }
 
@@ -230,6 +256,56 @@ resource "google_compute_backend_service" "mig" {
   }
 }
 
+# Second backend service on the same instance group, behind IAP, for var.iap_protected_paths. Only
+# the principals in var.iap_members reach it, after signing in with Google. Same instances and health
+# check as the public backend: what changes is who can reach these paths, not what serves them.
+#
+# No Cloud CDN: IAP and Cloud CDN cannot be enabled on the same backend service, and admin pages must
+# never be cached anyway. No oauth2_client_id: IAP uses the Google-managed OAuth client, which only
+# admits users of the project's organization.
+#
+# On a global external Application Load Balancer, Cloud Armor is evaluated before IAP. This backend
+# has its own security policy (section 4), because the public one blocks the protected paths.
+resource "google_compute_backend_service" "mig_iap" {
+  count = local.iap_enabled ? 1 : 0
+
+  name                  = local.names.backend_iap
+  protocol              = var.backend_service_protocol
+  port_name             = var.backend_port_name
+  load_balancing_scheme = var.load_balancing_scheme
+
+  health_checks   = [google_compute_health_check.backend_health_check.self_link]
+  security_policy = google_compute_security_policy.iap[0].id
+  enable_cdn      = false
+
+  iap {
+    enabled = true
+  }
+
+  # Request logs: the Cloud Armor decisions of this backend, as on the public one.
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+
+  backend {
+    group                 = var.mig_instance_group
+    balancing_mode        = var.balancing_mode
+    max_rate_per_instance = var.max_rate_per_instance
+    capacity_scaler       = var.capacity_scaler
+  }
+}
+
+# Who can reach the paths behind IAP.
+resource "google_iap_web_backend_service_iam_member" "accessors" {
+  for_each = local.iap_enabled ? toset(var.iap_members) : toset([])
+
+  project             = var.project_id
+  web_backend_service = google_compute_backend_service.mig_iap[0].name
+  role                = "roles/iap.httpsResourceAccessor"
+  member              = each.value
+}
+
 # Global health check designed to monitor individual instance readiness by probing the health status path
 resource "google_compute_health_check" "backend_health_check" {
   name = local.names.health_check
@@ -275,55 +351,202 @@ resource "google_storage_bucket_iam_member" "lb_uploads_reader" {
 # 4. CLOUD ARMOR
 # ==========================================
 
-# Security policy of the backend service, evaluated on every request that reaches the instances.
-# Rules are evaluated by priority, lowest number first; the first match decides.
-resource "google_compute_security_policy" "wordpress" {
-  name        = local.names.security_policy
-  description = "WordPress: blocks unknown hosts and xmlrpc.php, limits and bans login attempts, preconfigured WAF rules"
-  type        = "CLOUD_ARMOR"
-
-  # Path expressions are regular expressions: anchored at the start, "/+" also catches repeated
-  # slashes, and "[.]" is a literal dot without backslash escaping. No end anchor: PHP also runs
-  # /xmlrpc.php/anything.
-
+# Two security policies: one for the public backend service, and one for the backend behind IAP when
+# it exists. On a global external Application Load Balancer, Cloud Armor runs before IAP, and a rule
+# cannot tell which backend a request goes to. So the protected paths can only be blocked on the
+# public backend with a policy of its own. Rules are evaluated by priority, lowest number first; the
+# first match decides.
+#
+# Each rule is defined once, in the locals below, and each policy takes the ones it needs:
+#
+#   Rule                                Public policy               IAP policy
+#   Block unknown hosts                 yes                         yes
+#   Block xmlrpc.php                    yes                         no (never routed there)
+#   Block protected paths outside IAP   only when IAP is enabled    no
+#   Login rate limit and ban            only when IAP is disabled   yes
+#   Preconfigured WAF rules             yes                         yes
+#
+# Path expressions are regular expressions: anchored at the start, "/+" also catches repeated
+# slashes, and "[.]" is a literal dot without backslash escaping. No end anchor: PHP also runs
+# /xmlrpc.php/anything.
+locals {
   # Any Host header that is not one of the site's domains: requests the URL map sent to its default
   # (see the URL map above). Without this rule they would be served by WordPress. A request without a
   # Host header is blocked too. Health checks do not go through Cloud Armor, so they are not affected.
-  rule {
-    action      = "deny(403)"
+  rule_unknown_hosts = {
     priority    = 50
     description = "Block unknown hosts"
-    match {
-      expr {
-        expression = "!has(request.headers['host']) || !request.headers['host'].lower().matches('${local.allowed_hosts_regex}')"
-      }
-    }
+    expression  = "!has(request.headers['host']) || !request.headers['host'].lower().matches('${local.allowed_hosts_regex}')"
+    preview     = false
   }
 
   # xmlrpc.php: a classic brute force target, not used by this site. Blocked, not rate limited:
   # system.multicall tries hundreds of passwords in a single request.
-  rule {
-    action      = "deny(403)"
+  rule_xmlrpc = {
     priority    = 100
     description = "Block xmlrpc.php"
-    match {
-      expr {
-        expression = "request.path.matches('^/+xmlrpc[.]php')"
-      }
-    }
+    expression  = "request.path.matches('^/+xmlrpc[.]php')"
+    preview     = false
   }
+
+  # The path rules of the URL map compare the path as it arrives, but Apache and PHP read it more
+  # loosely: /wp-login.php/x runs wp-login.php, and //wp-admin/ or an encoded character can reach the
+  # same files. Such a request matches no protected path rule, goes to the public backend and would
+  # skip IAP. On the public backend, this rule blocks any path that contains a protected path, after
+  # decoding and lowercasing it as Cloud Armor recommends, except the exact public paths:
+  #   /wp-admin/*                 ->  /wp-admin(/|$)                    anywhere in the path
+  #   /wp-login.php               ->  /wp-login[.]php                   anywhere in the path
+  #   /wp-admin/admin-ajax.php    ->  ^/+wp-admin/+admin-ajax[.]php$    the whole path
+  protected_paths_regex = join("|", [
+    for path in var.iap_protected_paths :
+    endswith(path, "/*")
+    ? "${replace(lower(trimsuffix(path, "/*")), ".", "[.]")}(/|$)"
+    : replace(lower(path), ".", "[.]")
+  ])
+  public_paths_regex = join("|", [
+    for path in var.iap_public_paths : "^${replace(replace(lower(path), ".", "[.]"), "/", "/+")}$"
+  ])
+  rule_protected_paths = {
+    priority    = 150
+    description = "Block protected paths outside IAP"
+    expression = (
+      length(var.iap_public_paths) > 0
+      ? "request.path.urlDecodeUni().lower().matches('${local.protected_paths_regex}') && !request.path.urlDecodeUni().lower().matches('${local.public_paths_regex}')"
+      : "request.path.urlDecodeUni().lower().matches('${local.protected_paths_regex}')"
+    )
+    preview = false
+  }
+
+  # Preconfigured WAF rules (OWASP Core Rule Set 4.22), one rule per rule set.
+  # With waf_preview they only log what they would block: the WordPress admin area sends HTML and
+  # scripts that can look like attacks, so matches are reviewed in the logs before enforcing them.
+  rules_waf = [
+    for index, rule_set in var.waf_rule_sets : {
+      priority    = 1000 + index
+      description = "Preconfigured WAF: ${rule_set}"
+      expression  = "evaluatePreconfiguredWaf('${rule_set}', {'sensitivity': ${var.waf_sensitivity}})"
+      preview     = var.waf_preview
+    }
+  ]
+
+  # Deny rules of each policy. Neither list may repeat a priority.
+  public_deny_rules = concat(
+    [local.rule_unknown_hosts, local.rule_xmlrpc],
+    local.iap_enabled ? [local.rule_protected_paths] : [],
+    local.rules_waf,
+  )
+  iap_deny_rules = concat([local.rule_unknown_hosts], local.rules_waf)
 
   # Login attempts per client IP. Only POST: loading the login page is not an attempt.
   # Attempts over rate_limit_threshold get a 429. An IP that goes over ban_threshold is banned for
   # ban_duration_sec: every login attempt from it gets a 429 until then. The rest of the site keeps
-  # working for that IP.
-  rule {
-    action      = "rate_based_ban"
+  # working for that IP. It goes in the policy of the backend that serves the login: the IAP one
+  # when it exists, where it still matters, since a Google account with access, if compromised,
+  # could try WordPress passwords.
+  login_rule = {
     priority    = 200
     description = "Rate limit and ban login attempts per IP"
+    expression  = "request.path.matches('^/+wp-login[.]php') && request.method == 'POST'"
+  }
+}
+
+# Security policy of the public backend service.
+resource "google_compute_security_policy" "wordpress" {
+  name        = local.names.security_policy
+  description = "WordPress: blocks unknown hosts, xmlrpc.php and protected paths outside IAP, limits login attempts, preconfigured WAF rules"
+  type        = "CLOUD_ARMOR"
+
+  dynamic "rule" {
+    for_each = { for deny_rule in local.public_deny_rules : deny_rule.priority => deny_rule }
+    content {
+      action      = "deny(403)"
+      priority    = rule.value.priority
+      description = rule.value.description
+      preview     = rule.value.preview
+      match {
+        expr {
+          expression = rule.value.expression
+        }
+      }
+    }
+  }
+
+  # Login rate limit, only when the login is not behind IAP (see local.login_rule).
+  dynamic "rule" {
+    for_each = local.iap_enabled ? [] : [local.login_rule]
+    content {
+      action      = "rate_based_ban"
+      priority    = rule.value.priority
+      description = rule.value.description
+      match {
+        expr {
+          expression = rule.value.expression
+        }
+      }
+      rate_limit_options {
+        conform_action   = "allow"
+        exceed_action    = "deny(429)"
+        enforce_on_key   = "IP"
+        ban_duration_sec = var.login_ban_duration_sec
+        rate_limit_threshold {
+          count        = var.login_rate_limit_count
+          interval_sec = var.login_rate_limit_interval_sec
+        }
+        ban_threshold {
+          count        = var.login_ban_threshold_count
+          interval_sec = var.login_ban_interval_sec
+        }
+      }
+    }
+  }
+
+  # Default rule, required by Cloud Armor: allow what no rule above matched.
+  rule {
+    action      = "allow"
+    priority    = 2147483647
+    description = "Default rule: allow"
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+  }
+}
+
+# Security policy of the backend behind IAP. It runs before IAP, so it also sees the requests IAP is
+# about to reject: the host rule and the WAF stop them first.
+resource "google_compute_security_policy" "iap" {
+  count = local.iap_enabled ? 1 : 0
+
+  name        = local.names.iap_policy
+  description = "WordPress behind IAP: blocks unknown hosts, limits login attempts, preconfigured WAF rules"
+  type        = "CLOUD_ARMOR"
+
+  dynamic "rule" {
+    for_each = { for deny_rule in local.iap_deny_rules : deny_rule.priority => deny_rule }
+    content {
+      action      = "deny(403)"
+      priority    = rule.value.priority
+      description = rule.value.description
+      preview     = rule.value.preview
+      match {
+        expr {
+          expression = rule.value.expression
+        }
+      }
+    }
+  }
+
+  # Login rate limit (see local.login_rule). Same block as in the public policy; only one of the two
+  # exists at a time.
+  rule {
+    action      = "rate_based_ban"
+    priority    = local.login_rule.priority
+    description = local.login_rule.description
     match {
       expr {
-        expression = "request.path.matches('^/+wp-login[.]php') && request.method == 'POST'"
+        expression = local.login_rule.expression
       }
     }
     rate_limit_options {
@@ -338,24 +561,6 @@ resource "google_compute_security_policy" "wordpress" {
       ban_threshold {
         count        = var.login_ban_threshold_count
         interval_sec = var.login_ban_interval_sec
-      }
-    }
-  }
-
-  # Preconfigured WAF rules (OWASP Core Rule Set 4.22), one rule per rule set.
-  # With waf_preview they only log what they would block: the WordPress admin area sends HTML and
-  # scripts that can look like attacks, so matches are reviewed in the logs before enforcing them.
-  dynamic "rule" {
-    for_each = { for index, rule_set in var.waf_rule_sets : rule_set => index }
-    content {
-      action      = "deny(403)"
-      priority    = 1000 + rule.value
-      description = "Preconfigured WAF: ${rule.key}"
-      preview     = var.waf_preview
-      match {
-        expr {
-          expression = "evaluatePreconfiguredWaf('${rule.key}', {'sensitivity': ${var.waf_sensitivity}})"
-        }
       }
     }
   }

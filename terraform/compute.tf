@@ -160,6 +160,11 @@ module "global_external_lb" {
   login_ban_interval_sec        = 600
   login_ban_duration_sec        = 1800
 
+  # IAP for the admin area. Empty: no IAP backend (set in the next step of the refactor block).
+  iap_protected_paths = []
+  iap_public_paths    = []
+  iap_members         = []
+
   # LB configuration
   http_health_check_port    = var.health_check_port
   health_check_request_path = var.request_path

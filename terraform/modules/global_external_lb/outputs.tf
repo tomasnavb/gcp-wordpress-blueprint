@@ -9,6 +9,16 @@ output "certificate_name" {
 }
 
 output "security_policy_name" {
-  description = "Name of the Cloud Armor security policy of the backend service"
+  description = "Name of the Cloud Armor security policy of the public backend service"
   value       = google_compute_security_policy.wordpress.name
+}
+
+output "iap_backend_service_name" {
+  description = "Name of the backend service behind IAP (null when iap_protected_paths is empty)"
+  value       = local.iap_enabled ? google_compute_backend_service.mig_iap[0].name : null
+}
+
+output "iap_security_policy_name" {
+  description = "Name of the Cloud Armor security policy of the backend behind IAP (null when iap_protected_paths is empty)"
+  value       = local.iap_enabled ? google_compute_security_policy.iap[0].name : null
 }

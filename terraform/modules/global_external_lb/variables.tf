@@ -179,3 +179,37 @@ variable "login_ban_duration_sec" {
   description = "Seconds a banned IP gets a 429 on every login attempt"
   type        = number
 }
+
+# IAP. Optional: an empty iap_protected_paths creates no IAP backend, no second security policy and
+# no extra path rules.
+variable "iap_protected_paths" {
+  description = "Paths routed to a second backend service on the same instance group, behind IAP, e.g. /admin/* or /login.php. A path ending in /* covers everything under it. Empty: no IAP backend is created"
+  type        = list(string)
+
+  # Each path is written into a path rule and into a Cloud Armor regular expression, so only plain
+  # paths are accepted: letters, digits, dots, dashes, underscores and slashes, optionally ending in /*.
+  validation {
+    condition     = alltrue([for path in var.iap_protected_paths : can(regex("^/[A-Za-z0-9._/-]*(/[*])?$", path))])
+    error_message = "Each of iap_protected_paths must be a plain path starting with /, optionally ending in /*."
+  }
+}
+
+variable "iap_public_paths" {
+  description = "Exact paths under a protected prefix that stay on the public backend, e.g. /admin/ajax.php. Ignored when iap_protected_paths is empty"
+  type        = list(string)
+
+  validation {
+    condition     = alltrue([for path in var.iap_public_paths : can(regex("^/[A-Za-z0-9._/-]*$", path))])
+    error_message = "Each of iap_public_paths must be an exact plain path starting with /, without wildcards."
+  }
+}
+
+variable "iap_members" {
+  description = "Principals granted roles/iap.httpsResourceAccessor on the IAP backend, e.g. user:admin@example.com or group:admins@example.com"
+  type        = list(string)
+
+  validation {
+    condition     = length(var.iap_protected_paths) == 0 || length(var.iap_members) > 0
+    error_message = "iap_members must not be empty when iap_protected_paths is set: nobody could reach the protected paths."
+  }
+}

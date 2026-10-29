@@ -18,18 +18,21 @@ No modules.
 |------|------|
 | [google_compute_backend_bucket.uploads](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_backend_bucket) | resource |
 | [google_compute_backend_service.mig](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_backend_service) | resource |
+| [google_compute_backend_service.mig_iap](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_backend_service) | resource |
 | [google_compute_firewall.allow_google_frontends](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall) | resource |
 | [google_compute_global_address.external_ip](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_global_address) | resource |
 | [google_compute_global_forwarding_rule.http](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_global_forwarding_rule) | resource |
 | [google_compute_global_forwarding_rule.https](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_global_forwarding_rule) | resource |
 | [google_compute_health_check.backend_health_check](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_health_check) | resource |
 | [google_compute_managed_ssl_certificate.https](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_managed_ssl_certificate) | resource |
+| [google_compute_security_policy.iap](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_security_policy) | resource |
 | [google_compute_security_policy.wordpress](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_security_policy) | resource |
 | [google_compute_ssl_policy.https](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_ssl_policy) | resource |
 | [google_compute_target_http_proxy.http](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_target_http_proxy) | resource |
 | [google_compute_target_https_proxy.https](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_target_https_proxy) | resource |
 | [google_compute_url_map.external_lb_url_map](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_url_map) | resource |
 | [google_compute_url_map.http_redirect](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_url_map) | resource |
+| [google_iap_web_backend_service_iam_member.accessors](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/iap_web_backend_service_iam_member) | resource |
 | [google_storage_bucket_iam_member.lb_uploads_reader](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket_iam_member) | resource |
 | [google_compute_global_address.reserved](https://registry.terraform.io/providers/hashicorp/google/latest/docs/data-sources/compute_global_address) | data source |
 
@@ -50,6 +53,9 @@ No modules.
 | <a name="input_environment"></a> [environment](#input\_environment) | Environment, last part of every resource name (dev or prod) | `string` | n/a | yes |
 | <a name="input_health_check_request_path"></a> [health\_check\_request\_path](#input\_health\_check\_request\_path) | HTTP path the health check requests on the backend instances | `string` | n/a | yes |
 | <a name="input_http_health_check_port"></a> [http\_health\_check\_port](#input\_http\_health\_check\_port) | TCP port the health check probes on the backend instances | `number` | n/a | yes |
+| <a name="input_iap_members"></a> [iap\_members](#input\_iap\_members) | Principals granted roles/iap.httpsResourceAccessor on the IAP backend, e.g. user:admin@example.com or group:admins@example.com | `list(string)` | n/a | yes |
+| <a name="input_iap_protected_paths"></a> [iap\_protected\_paths](#input\_iap\_protected\_paths) | Paths routed to a second backend service on the same instance group, behind IAP, e.g. /admin/* or /login.php. A path ending in /* covers everything under it. Empty: no IAP backend is created | `list(string)` | n/a | yes |
+| <a name="input_iap_public_paths"></a> [iap\_public\_paths](#input\_iap\_public\_paths) | Exact paths under a protected prefix that stay on the public backend, e.g. /admin/ajax.php. Ignored when iap\_protected\_paths is empty | `list(string)` | n/a | yes |
 | <a name="input_load_balancing_scheme"></a> [load\_balancing\_scheme](#input\_load\_balancing\_scheme) | Load balancing scheme applied to both forwarding rules and the backend service (EXTERNAL\_MANAGED) | `string` | n/a | yes |
 | <a name="input_login_ban_duration_sec"></a> [login\_ban\_duration\_sec](#input\_login\_ban\_duration\_sec) | Seconds a banned IP gets a 429 on every login attempt | `number` | n/a | yes |
 | <a name="input_login_ban_interval_sec"></a> [login\_ban\_interval\_sec](#input\_login\_ban\_interval\_sec) | Interval in seconds over which login\_ban\_threshold\_count is counted | `number` | n/a | yes |
@@ -79,4 +85,6 @@ No modules.
 |------|-------------|
 | <a name="output_certificate_name"></a> [certificate\_name](#output\_certificate\_name) | Name of the Google-managed SSL certificate (changes with the domain list) |
 | <a name="output_external_lb_ip"></a> [external\_lb\_ip](#output\_external\_lb\_ip) | External IP address of the load balancer (reserved beforehand or created by this module) |
-| <a name="output_security_policy_name"></a> [security\_policy\_name](#output\_security\_policy\_name) | Name of the Cloud Armor security policy of the backend service |
+| <a name="output_iap_backend_service_name"></a> [iap\_backend\_service\_name](#output\_iap\_backend\_service\_name) | Name of the backend service behind IAP (null when iap\_protected\_paths is empty) |
+| <a name="output_iap_security_policy_name"></a> [iap\_security\_policy\_name](#output\_iap\_security\_policy\_name) | Name of the Cloud Armor security policy of the backend behind IAP (null when iap\_protected\_paths is empty) |
+| <a name="output_security_policy_name"></a> [security\_policy\_name](#output\_security\_policy\_name) | Name of the Cloud Armor security policy of the public backend service |
