@@ -13,7 +13,7 @@ Single list of the project's tasks and their status. It replaces the task tables
 | `done` | Confirmed in a real deploy, or finished if it needs no deploy |
 | `dropped` | Decided not to do |
 
-Last updated: 2026-10-28.
+Last updated: 2026-10-29.
 
 ## Open
 
@@ -134,7 +134,8 @@ Changes to take the project from a portfolio deployment to one configured and do
 | T33 | Restore runbook, tested: point-in-time recovery to a new instance, and restore from an export | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 | T34 | Database protection: `deletion_protection` and `prevent_destroy` set to `true`, and the destroy procedure documented (a reviewed change that turns protection off first) | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 | T35 | Separate pipeline service accounts: read-only for pull request plans, which can run code from the PR, and the account with write roles for the apply only | 2026-10-14 | `pending` | Production review of 2026-10-14; implemented in R15 |
-| T36 | Production values: `min_replicas` of at least 2 (zone fault tolerance), Cloud SQL tier sized, maintenance window, Query Insights | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T46 | Google group for the administrators instead of the operator's user account, for both IAP accesses: SSH to the instances (`roles/iap.tunnelResourceAccessor`, `IAM.tf`) and the admin area behind IAP (`roles/iap.httpsResourceAccessor`, `iap_members` in `compute.tf`). Today both take `user:${var.iap_user_email}`; with a group, adding or removing an administrator is a change of group membership, not of Terraform | 2026-10-29 | `pending` | Refactor block, R30 |
+| T36 | Production values: `min_replicas` of at least 2 (zone fault tolerance; set in R32), Cloud SQL tier sized, maintenance window, Query Insights | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 | T37 | Alerting that reaches someone: notification channel for the T18 alerts, export failure alert, and a billing budget alert | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 | T38 | Staging environment: a separate project with the same code, its own variable file and its own state. Includes renaming `terraform.tfvars` per environment | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 | T39 | SMTP relay for WordPress mail (port 25 is blocked on Compute Engine), with its credential in Secret Manager | 2026-10-14 | `pending` | Production review of 2026-10-14 |

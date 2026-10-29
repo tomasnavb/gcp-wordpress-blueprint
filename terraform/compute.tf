@@ -160,10 +160,13 @@ module "global_external_lb" {
   login_ban_interval_sec        = 600
   login_ban_duration_sec        = 1800
 
-  # IAP for the admin area. Empty: no IAP backend (set in the next step of the refactor block).
-  iap_protected_paths = []
-  iap_public_paths    = []
-  iap_members         = []
+  # Admin area and login behind IAP (locals.tf). The public policy blocks any variant of those paths
+  # that the path rules would not catch.
+  iap_protected_paths = local.iap_protected_paths
+  iap_public_paths    = local.iap_public_paths
+  # The operator, the same account that has SSH through IAP (IAM.tf), passed by the pipeline and never
+  # written in the repository. To be replaced by a Google group for both accesses (to-do).
+  iap_members = ["user:${var.iap_user_email}"]
 
   # LB configuration
   http_health_check_port    = var.health_check_port

@@ -118,4 +118,12 @@ locals {
   # Every secret container: the ones above plus the password. IAM.tf grants access over all of them.
   secret_names = concat(keys(local.secret_values), [local.db_password_secret_name])
 
+  # Admin area and login of WordPress, always behind IAP in this project: a local, not a variable, so
+  # configuration cannot turn it off. A fresh WordPress is installed by whoever completes
+  # /wp-admin/install.php first, and bots try it within hours of a new domain appearing in
+  # Certificate Transparency logs (devlog-2026-10-26-verification.md, E4). /wp-admin without the
+  # trailing slash is listed on its own: /wp-admin/* does not match it.
+  # admin-ajax.php stays public: themes and plugins call it from the public site.
+  iap_protected_paths = ["/wp-admin", "/wp-admin/*", "/wp-login.php"]
+  iap_public_paths    = ["/wp-admin/admin-ajax.php"]
 }

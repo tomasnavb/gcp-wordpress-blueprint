@@ -44,7 +44,9 @@ request_path        = "/health.php"
 # ==============================================================
 # COMPUTE — AUTOSCALER
 # ==============================================================
-min_replicas           = 1
+# Two instances at all times: one can be replaced (rollout, auto-healing, zone outage) while the
+# other serves. With one, every replacement is downtime.
+min_replicas           = 2
 max_replicas           = 3
 cooldown_period        = 60
 lb_utilization_target  = 0.8
