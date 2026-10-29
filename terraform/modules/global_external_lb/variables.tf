@@ -29,8 +29,15 @@ variable "environment" {
 }
 
 variable "domain_names" {
-  description = "Domains included in the Google-managed SSL certificate"
+  description = "Domains the load balancer serves, included in the Google-managed SSL certificate. Any other Host header gets a 403"
   type        = list(string)
+
+  # Each name is written into the host rule and into a Cloud Armor regular expression, so only
+  # plain hostnames are accepted: no wildcards, ports or other characters.
+  validation {
+    condition     = length(var.domain_names) > 0 && alltrue([for domain in var.domain_names : can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", domain))])
+    error_message = "domain_names must hold at least one domain, each a lowercase hostname such as www.example.com."
+  }
 }
 
 variable "ssl_policy_profile" {

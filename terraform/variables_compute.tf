@@ -5,7 +5,7 @@ variable "lb_use_reserved_ip" {
 }
 
 variable "domain_names" {
-  description = "Domain names included in the Google-managed SSL certificate of the load balancer. Each needs a DNS A record pointing to the load balancer IP"
+  description = "Domain names the load balancer serves, included in its Google-managed SSL certificate; any other Host header gets a 403. Each needs a DNS A record pointing to the load balancer IP. The first one is the site address WordPress uses (WP_HOME and WP_SITEURL)"
   type        = list(string)
 }
 

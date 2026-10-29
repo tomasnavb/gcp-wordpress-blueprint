@@ -36,6 +36,11 @@ locals {
   # The hash goes last, so the environment cannot be the last part of this name.
   certificate_name = "${var.name_prefix}-cert-${var.environment}-${substr(md5(join(",", var.domain_names)), 0, 8)}"
 
+  # Regular expression for the Host header of the site's domains, used by Cloud Armor. A dot is
+  # written "[.]" so it only matches a dot. The port is optional: a client may send it in the
+  # header (www.example.com:443).
+  allowed_hosts_regex = "^(${join("|", [for domain in var.domain_names : replace(domain, ".", "[.]")])})(:[0-9]+)?$"
+
   # Google front end ranges. With a global external Application Load Balancer both the
   # health check probes and the proxied client traffic reach the backends from these ranges.
   google_frontend_ranges = ["35.191.0.0/16", "130.211.0.0/22"]
@@ -126,12 +131,25 @@ resource "google_compute_target_http_proxy" "http" {
 # URL map of the HTTPS proxy. Uploads go to the bucket, everything else to WordPress on the MIG.
 # No URL rewrite: the objects are stored under the same path WordPress serves them from, so a request
 # for /wp-content/uploads/2026/10/photo.jpg reads the object wp-content/uploads/2026/10/photo.jpg.
+#
+# Only the site's own domains reach the path matcher. The client writes the Host header, so it can be
+# anything: the load balancer IP, Google's reverse DNS name for it, or someone else's domain. Bots
+# that sweep cloud IP ranges send those and find whatever answers (devlog-2026-10-26-verification.md,
+# E4). A request with any other host goes to the URL map default.
+#
+# The default must not serve WordPress, but the URL map has no "deny" action: its default can only be
+# a backend service, a backend bucket or a redirect. A redirect to the site would hand its domain to
+# whoever sent the request, and a bucket default would be one more thing reachable from anywhere. So
+# the default is the backend service, and its Cloud Armor policy answers 403 to any host that is not
+# one of var.domain_names (rule "Block unknown hosts"). Do not remove that rule: without it, the
+# default serves WordPress to every host again. It also keeps unknown hosts off the uploads bucket,
+# whose path rule only exists in the path matcher of the site's domains.
 resource "google_compute_url_map" "external_lb_url_map" {
   name            = local.names.url_map
   default_service = google_compute_backend_service.mig.self_link
 
   host_rule {
-    hosts        = ["*"]
+    hosts        = var.domain_names
     path_matcher = "wordpress"
   }
 
@@ -261,12 +279,26 @@ resource "google_storage_bucket_iam_member" "lb_uploads_reader" {
 # Rules are evaluated by priority, lowest number first; the first match decides.
 resource "google_compute_security_policy" "wordpress" {
   name        = local.names.security_policy
-  description = "WordPress: blocks xmlrpc.php, limits and bans login attempts, preconfigured WAF rules"
+  description = "WordPress: blocks unknown hosts and xmlrpc.php, limits and bans login attempts, preconfigured WAF rules"
   type        = "CLOUD_ARMOR"
 
   # Path expressions are regular expressions: anchored at the start, "/+" also catches repeated
   # slashes, and "[.]" is a literal dot without backslash escaping. No end anchor: PHP also runs
   # /xmlrpc.php/anything.
+
+  # Any Host header that is not one of the site's domains: requests the URL map sent to its default
+  # (see the URL map above). Without this rule they would be served by WordPress. A request without a
+  # Host header is blocked too. Health checks do not go through Cloud Armor, so they are not affected.
+  rule {
+    action      = "deny(403)"
+    priority    = 50
+    description = "Block unknown hosts"
+    match {
+      expr {
+        expression = "!has(request.headers['host']) || !request.headers['host'].lower().matches('${local.allowed_hosts_regex}')"
+      }
+    }
+  }
 
   # xmlrpc.php: a classic brute force target, not used by this site. Blocked, not rate limited:
   # system.multicall tries hundreds of passwords in a single request.

@@ -46,7 +46,7 @@ No modules.
 | <a name="input_backend_target_tags"></a> [backend\_target\_tags](#input\_backend\_target\_tags) | Network tags of the backend instances the firewall rule applies to (must be present in the instance template tags) | `list(string)` | n/a | yes |
 | <a name="input_balancing_mode"></a> [balancing\_mode](#input\_balancing\_mode) | Backend balancing mode: RATE (requests per second) or UTILIZATION (CPU) | `string` | n/a | yes |
 | <a name="input_capacity_scaler"></a> [capacity\_scaler](#input\_capacity\_scaler) | Multiplier applied to the backend's capacity (1.0 = 100%) | `number` | n/a | yes |
-| <a name="input_domain_names"></a> [domain\_names](#input\_domain\_names) | Domains included in the Google-managed SSL certificate | `list(string)` | n/a | yes |
+| <a name="input_domain_names"></a> [domain\_names](#input\_domain\_names) | Domains the load balancer serves, included in the Google-managed SSL certificate. Any other Host header gets a 403 | `list(string)` | n/a | yes |
 | <a name="input_environment"></a> [environment](#input\_environment) | Environment, last part of every resource name (dev or prod) | `string` | n/a | yes |
 | <a name="input_health_check_request_path"></a> [health\_check\_request\_path](#input\_health\_check\_request\_path) | HTTP path the health check requests on the backend instances | `string` | n/a | yes |
 | <a name="input_http_health_check_port"></a> [http\_health\_check\_port](#input\_http\_health\_check\_port) | TCP port the health check probes on the backend instances | `number` | n/a | yes |

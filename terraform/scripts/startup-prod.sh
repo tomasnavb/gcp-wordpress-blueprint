@@ -78,6 +78,48 @@ with open('/var/www/html/wp-config.php', 'w') as f:
     f.write(content)
 PYEOF
 
+echo ">>> Setting the site address in wp-config.php..."
+# WP_HOME and WP_SITEURL fix the address WordPress builds its links and redirects with, the password
+# reset link among them. Without them WordPress takes it from the database, and before the
+# installation from the Host header of the request, which the client writes (PortSwigger, HTTP Host
+# header attacks). The value comes from the instance metadata (site-url), set by Terraform from
+# var.domain_names. It is checked here because it is written into PHP code, and passed to Python as
+# an environment variable, never inside the script text. The block is replaced on every boot, so a
+# changed domain takes effect when the instance is recreated.
+SITE_URL=$(metadata site-url)
+if ! [[ "$SITE_URL" =~ ^https://[a-z0-9.-]+$ ]]; then
+  echo ">>> ERROR: site-url '$SITE_URL' is not an https:// URL with a plain hostname." >&2
+  exit 1
+fi
+SITE_URL="$SITE_URL" python3 <<'PYEOF'
+import os
+import re
+import sys
+
+path = '/var/www/html/wp-config.php'
+marker = "/* That's all, stop editing!"
+start = "/* Site address, set by the startup script from the instance metadata (site-url). */"
+end = "/* End of site address. */"
+url = os.environ['SITE_URL']
+block = (
+    start + "\n"
+    "define( 'WP_HOME', '" + url + "' );\n"
+    "define( 'WP_SITEURL', '" + url + "' );\n"
+    + end + "\n\n"
+)
+
+with open(path, 'r') as f:
+    content = f.read()
+
+content = re.sub(re.escape(start) + r".*?" + re.escape(end) + r"\n\n", "", content, flags=re.S)
+if marker not in content:
+    sys.exit(f"ERROR: {marker!r} not found in {path}.")
+content = content.replace(marker, block + marker, 1)
+
+with open(path, 'w') as f:
+    f.write(content)
+PYEOF
+
 echo ">>> Mounting the uploads bucket..."
 # The bucket name and the folder to mount come from the instance metadata (keys uploads-bucket and
 # uploads-folder). The mount is gone after a reboot and this script runs again on every boot, so it
