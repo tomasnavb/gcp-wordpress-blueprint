@@ -51,11 +51,11 @@ Applies the naming convention of the architecture style guide (`[project]-[compo
 | R25 | Cloud CDN on the backend service and on the backend bucket, both with `cache_mode = "CACHE_ALL_STATIC"`. Comment in the code why `FORCE_CACHE_ALL` is ruled out (it would cache pages of logged-in users) | 2026-10-16 | `unverified` | Edge review of 2026-10-16 |
 | R26 | Cloud Armor: backend security policy on the backend service with the preconfigured OWASP rules and rate limiting on `wp-login.php` and `xmlrpc.php`; edge security policy on the backend bucket if needed. Replaces T42 | 2026-10-16 | `unverified` | Edge review of 2026-10-16, T42 |
 | R27 | README note: uploads are public by design, as in standard WordPress; per-user private files would go in a separate private bucket served through signed URLs, never in the uploads bucket | 2026-10-16 | `unverified` | Edge review of 2026-10-16 |
-| R28 | Host rule of the URL map with `var.domain_names` instead of `"*"`. The URL map default stays the public backend service, where a Cloud Armor rule answers 403 to any other `Host`; a comment in the code explains why the default must not serve WordPress | 2026-10-28 | `pending` | Verification 10-26, E4 |
-| R29 | `WP_HOME` and `WP_SITEURL` written by the startup script from a `site-url` instance metadata key (the first of `var.domain_names`), so WordPress never takes its address from the `Host` header | 2026-10-28 | `pending` | Verification 10-26, E4 |
-| R30 | IAP for the admin area: optional second backend service on the same MIG in `global_external_lb` (`iap_protected_paths`, `iap_public_paths`, `iap_members`; nothing created when the paths are empty), with `roles/iap.httpsResourceAccessor` for the members. The root module fixes `/wp-admin/*` and `/wp-login.php` behind IAP and `/wp-admin/admin-ajax.php` public, in locals; `iap_members` comes from the triggers, never from the repo. The installer is completed once by the operator through IAP | 2026-10-28 | `pending` | Verification 10-26, E4 |
-| R31 | Application passwords disabled in the image, so the REST API cannot be authenticated around IAP | 2026-10-28 | `pending` | Verification 10-26, E4 |
-| R32 | `min_replicas = 2` | 2026-10-28 | `pending` | Verification 10-26, E4 |
+| R28 | Host rule of the URL map with `var.domain_names` instead of `"*"`. The URL map default stays the public backend service, where a Cloud Armor rule answers 403 to any other `Host`; a comment in the code explains why the default must not serve WordPress | 2026-10-28 | `unverified` | Verification 10-26, E4 |
+| R29 | `WP_HOME` and `WP_SITEURL` written by the startup script from a `site-url` instance metadata key (the first of `var.domain_names`), so WordPress never takes its address from the `Host` header | 2026-10-28 | `unverified` | Verification 10-26, E4 |
+| R30 | IAP for the admin area: optional second backend service on the same MIG in `global_external_lb` (`iap_protected_paths`, `iap_public_paths`, `iap_members`; nothing created when the paths are empty), with `roles/iap.httpsResourceAccessor` for the members. The root module fixes `/wp-admin/*` and `/wp-login.php` behind IAP and `/wp-admin/admin-ajax.php` public, in locals; `iap_members` comes from the triggers, never from the repo. The installer is completed once by the operator through IAP | 2026-10-28 | `unverified` | Verification 10-26, E4 |
+| R31 | Application passwords disabled in the image, so the REST API cannot be authenticated around IAP | 2026-10-28 | `unverified` | Verification 10-26, E4 |
+| R32 | `min_replicas = 2` | 2026-10-28 | `unverified` | Verification 10-26, E4 |
 | R22 | Verification: `fmt`, `validate` and `tflint`, then a deploy from scratch. Checks: names in the console, first and later builds through IAP in the build subnet, the build VM cannot reach Cloud SQL, uploads served by the backend bucket, CDN cache hits on uploads and on theme assets but not on HTML or logged-in pages, Cloud Armor rules blocking a test request, the checks of T10, and the open checks of T01 and T03 to T06 | 2026-10-16 | `pending` | Naming review of 2026-10-16 |
 
 ### 1. Finish verifying what is already deployed
@@ -101,7 +101,7 @@ Applies the naming convention of the architecture style guide (`[project]-[compo
 |---|---|---|---|---|
 | T18 | Observability: Ops Agent, uptime check, alert policy | 2026-10-07 | `pending` | Backlog 14 |
 | T19 | Static analysis in the plan pipeline (tflint, checkov) | 2026-10-07 | `pending` | Backlog 15 |
-| T20 | Pin the WordPress version and verify its checksum in the image build. Part of the refactor block | 2026-10-07 | `pending` | Backlog 17 |
+| T20 | Pin the WordPress version and verify its checksum in the image build. Part of the refactor block | 2026-10-07 | `unverified` | Backlog 17 |
 
 ### 6. Improvements
 
