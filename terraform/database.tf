@@ -18,8 +18,12 @@ resource "google_sql_database_instance" "main" {
     disk_size         = var.instance_disk_size_gb
 
     backup_configuration {
-      enabled            = true
-      binary_log_enabled = true
+      enabled                        = true
+      binary_log_enabled             = true
+      transaction_log_retention_days = 7
+      backup_retention_settings {
+        retained_backups = 8
+      }
     }
 
     ip_configuration {
