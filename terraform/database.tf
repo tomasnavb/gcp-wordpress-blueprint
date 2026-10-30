@@ -20,6 +20,7 @@ resource "google_sql_database_instance" "main" {
     backup_configuration {
       enabled                        = true
       binary_log_enabled             = true
+      start_time                     = "02:00"
       transaction_log_retention_days = 7
       backup_retention_settings {
         retained_backups = 8
