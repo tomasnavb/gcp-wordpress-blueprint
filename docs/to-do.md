@@ -118,7 +118,7 @@ Applies the naming convention of the architecture style guide (`[project]-[compo
 | ID | Task | Created | Status | Detail |
 |---|---|---|---|---|
 | T26 | Silence the `debconf` warnings of the image build (`DEBIAN_FRONTEND=noninteractive`) | 2026-10-08 | `pending` | Verification, build log notes |
-| T28 | Remaining cleanup: the note in `APIs.tf` about PostgreSQL, MongoDB and a VPC connector, the unused `vpcaccess` API, and `min_replicas = 1` against the zone fault tolerance claim | 2026-10-07 | `in-progress` | Backlog 16 |
+| T28 | Remaining cleanup: the note in `APIs.tf` about PostgreSQL, MongoDB and a VPC connector, the unused `vpcaccess` API, and `min_replicas = 1` against the zone fault tolerance claim | 2026-10-07 | `unverified` | Backlog 16; `min_replicas = 2` set in R32 |
 | T29 | Delete merged and stray branches: `update/https-lb-fr`, `update/global-https-lb-and-pipeline`, `fix/destroy-service-networking`, `feature/stateless-wordpress`, local branch `origin` | 2026-10-08 | `pending` | Devlog 10-08, 16 |
 | T30 | Mark A18 and A19 in the verification checklist: WordPress over HTTPS with its styles, and `/wp-admin` without a redirect loop | 2026-10-08 | `pending` | Verification A18, A19 |
 

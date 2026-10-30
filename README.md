@@ -117,7 +117,7 @@ SSH access is granted through IAP tunnel access (`roles/iap.tunnelResourceAccess
 The operator email is not committed: it is passed to the pipeline as the `_IAP_USER_EMAIL` substitution and validated at plan time. In a production environment the binding would go to a Google group (`group:infra-admins@example.com`) instead of a user, so that team changes do not require a Terraform change. The same account reaches the admin area through IAP (next section); moving both accesses to a group is task T46 in [docs/to-do.md](docs/to-do.md).
 
 ### Admin Area behind IAP
-A fresh WordPress is installed by whoever completes `/wp-admin/install.php` first, and the installer asks for no credentials. In the first verification deploy a bot did exactly that within hours of the deploy, on the site's own domain, most likely found in Certificate Transparency logs, and then tried to edit a theme file to run PHP (`DISALLOW_FILE_MODS` stopped it). The timeline and the evidence are in [devlog-2026-10-26-verification.md](docs/devlogs/devlog-2026-10-26-verification.md) (E4).
+A fresh WordPress is installed by whoever completes `/wp-admin/install.php` first, and the installer asks for no credentials. In the first verification deploy a bot did exactly that within hours of the deploy, on the site's own domain, most likely found in Certificate Transparency logs, and then tried to edit a theme file to run PHP (`DISALLOW_FILE_MODS` stopped it). The timeline and the evidence are in [devlog-2026-10-26-verification.md](docs/devlogs/devlog-2026-10-26-verification.md) (E4); the decisions that followed, the options considered and the sources, in [devlog-2026-10-30.md](docs/devlogs/devlog-2026-10-30.md).
 
 So the admin area and the login are only reachable through IAP, from the first apply:
 
@@ -205,7 +205,7 @@ WordPress instances are deployed from a golden image built with Packer (`packer/
 
 ### Backups: Daily Export and Point-in-Time Recovery
 - **Daily export** (Cloud SQL export to a SQL file in Cloud Storage) — at midnight (`Europe/Paris`), deleted after 90 days by a lifecycle rule on the backup bucket. Full data portability, and independent of the instance: it survives if the instance is deleted.
-- **Point-in-time recovery** — the Cloud SQL instance has automated daily backups and binary logging enabled, with Cloud SQL's default retention. A restore can go to any moment within that window.
+- **Point-in-time recovery** — the Cloud SQL instance has automated daily backups and binary logging enabled: 7 days of transaction logs, the maximum for MySQL on Enterprise edition, and 8 retained backups, one more than the days of logs as Google recommends. A restore can go to any moment of the last 7 days, and always creates a new instance. The backup window starts at 02:00 UTC, a few hours after the daily export.
 
 The export is triggered by a Cloud Scheduler job invoking a Cloud Function v2. An earlier version also took an on-demand snapshot every 4 hours; it was removed, because point-in-time recovery already covers that with finer granularity, and on-demand backups were never deleted.
 
@@ -866,7 +866,7 @@ What the code does not do yet, tracked in [docs/to-do.md](docs/to-do.md):
 - **The instances do not verify the IAP signed header.** Google recommends that an application behind IAP verify the JWT IAP adds (`x-goog-iap-jwt-assertion`), as a backstop if a request ever reaches it without going through IAP. Here that backstop is a Cloud Armor rule on the public backend, which blocks any path containing a protected one; it depends on the path being decoded and normalized as expected, which the smoke tests check.
 - **Admin access through one user account.** IAP and SSH go to `IAP_USER_EMAIL`, not to a group, and IAP only admits accounts of the project's organization.
 - **WAF rules in preview.** They log but do not block until their matches are reviewed (see [Review and enforce the WAF rules](#review-and-enforce-the-waf-rules)).
-- **Point-in-time recovery with default retention, restore not tested.** Retention is Cloud SQL's default, not set explicitly, and no restore has been rehearsed.
+- **Restore not tested.** Neither a point-in-time recovery nor a restore from an export has been rehearsed (to-do T33).
 - **IAM is not fully least-privilege.** The apply service account holds broad admin roles, and the Cloud SQL service account has `roles/storage.admin` on the backup bucket where writing objects would be enough.
 - **The password rotation is not zero-downtime**, see [Rotate the database password](#rotate-the-database-password).
 
