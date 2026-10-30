@@ -65,9 +65,8 @@ max_scaled_in_replicas = 1
 # ==============================================================
 lb_use_reserved_ip = true
 
-# Domains served by the load balancer. The managed SSL certificate is issued for them
-# once their DNS A records point to the load balancer IP. Replace with your own.
-domain_names = ["wordpress.tomasnavarro.dev"]
+# domain_names (the domains served by the load balancer) is not set here: the pipeline passes it
+# from the _DOMAIN_NAMES substitution of the plan triggers (configs/setup.sh), like project_id.
 
 # Cloud Armor WAF rules in preview: they only log what they would block. Review the matches in the
 # load balancer logs, then set to false to enforce them.

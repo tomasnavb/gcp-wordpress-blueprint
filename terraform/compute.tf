@@ -39,7 +39,7 @@ module "wordpress_regional_mig" {
   # - uploads-bucket and uploads-folder: what to mount. The reference to the bucket resource also
   #   makes the instances wait until it exists.
   # - secret-db-*: the names of the database secrets.
-  # - site-url: the address of the site, the first of var.domain_names. WordPress builds its links and
+  # - site-url: the address of the site, the first of local.domain_names. WordPress builds its links and
   #   redirects, the password reset link among them, from WP_HOME and WP_SITEURL, which the script sets
   #   to this value: never from the Host header of the request, which the client writes.
   # db-password-version is not read by anything: it is here so that rotating the password changes
@@ -52,7 +52,7 @@ module "wordpress_regional_mig" {
     "secret-db-user"      = local.db_secret_names.user
     "secret-db-password"  = local.db_secret_names.password
     "secret-db-host"      = local.db_secret_names.host
-    "site-url"            = "https://${var.domain_names[0]}"
+    "site-url"            = "https://${local.domain_names[0]}"
     "db-password-version" = tostring(var.db_password_version)
   }
   service_account_email = google_service_account.web_vm.email
@@ -112,7 +112,7 @@ module "global_external_lb" {
   backend_port       = var.port
 
   # HTTPS: Google-managed certificate and minimum TLS version
-  domain_names       = var.domain_names
+  domain_names       = local.domain_names
   ssl_policy_profile = "MODERN"
   min_tls_version    = "TLS_1_2"
 

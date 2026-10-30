@@ -51,6 +51,7 @@ steps:
     env:
       - "TF_VAR_project_id=$_PROJECT_ID"
       - "TF_VAR_iap_user_email=$_IAP_USER_EMAIL"
+      - "TF_VAR_domain_names=$_DOMAIN_NAMES"
 
   # Convert Terraform plan to text and JSON format for easier analysis and artifact storage
   - id: "plan-to-text"
@@ -96,6 +97,8 @@ substitutions:
   _PROJECT_ID: "your-gcp-project-id"
   _STATE_BUCKET: "your-state-bucket-name"
   _IAP_USER_EMAIL: "your-email-address"
+  # Comma separated (example.com,www.example.com). The placeholder fails the variable validation.
+  _DOMAIN_NAMES: "your-domain-names"
   _SAVE_PLAN: "false"
 
 timeout: "1200s"

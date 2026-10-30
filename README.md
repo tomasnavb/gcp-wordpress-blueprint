@@ -24,12 +24,13 @@ gcloud projects create $PROJECT_ID --name="WordPress on GCP"
 gcloud config set project $PROJECT_ID
 gcloud billing projects link $PROJECT_ID --billing-account=BILLING_ACCOUNT_ID
 
-# 2. Repository and variables (Steps 2 and 3); set domain_names in terraform/terraform.tfvars
+# 2. Repository and variables (Steps 2 and 3)
 gh repo clone YOUR_GITHUB_USERNAME/gcp-wordpress-blueprint
 cd gcp-wordpress-blueprint
 export REPO_NAME="gcp-wordpress-blueprint"
 export REPO_OWNER="your-github-username-or-org"
 export IAP_USER_EMAIL="you@example.com"
+export DOMAIN_NAMES="wordpress.example.com"
 export RESERVE_LB_IP="true"
 
 # 3. Connect the repository in the console (Step 4):
@@ -47,7 +48,7 @@ gcloud builds submit --project=$PROJECT_ID --config=cloudbuild/packer.yaml \
   --substitutions="_PROJECT_ID=$PROJECT_ID,_ZONE=europe-west1-b,_ENVIRONMENT=prod,_USE_IAP=false" \
   --service-account="${SA_PREFIX}/packer-build-sa${SA_SUFFIX}"
 gcloud builds submit --project=$PROJECT_ID --config=cloudbuild/terraform-plan.yaml \
-  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-tfstate,_IAP_USER_EMAIL=$IAP_USER_EMAIL,_SAVE_PLAN=true" \
+  --substitutions="^;^_PROJECT_ID=$PROJECT_ID;_STATE_BUCKET=${PROJECT_ID}-tfstate;_IAP_USER_EMAIL=$IAP_USER_EMAIL;_DOMAIN_NAMES=$DOMAIN_NAMES;_SAVE_PLAN=true" \
   --service-account="${SA_PREFIX}/terraform-plan-sa${SA_SUFFIX}"
 gcloud builds submit --project=$PROJECT_ID --config=cloudbuild/terraform-apply.yaml \
   --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-tfstate,_PLAN_BUILD_ID=PLAN_BUILD_ID" \
@@ -316,7 +317,7 @@ gcp-wordpress-blueprint/
 │
 └── terraform/
     ├── main.tf                      # Providers, backend (GCS, bucket via -backend-config)
-    ├── terraform.tfvars             # Variable values (project_id and iap_user_email are passed by the pipeline)
+    ├── terraform.tfvars             # Variable values (project_id, iap_user_email and domain_names are passed by the pipeline)
     ├── .terraform.lock.hcl          # Provider version lock (committed for CI/CD consistency)
     ├── APIs.tf                      # GCP API enablement
     ├── compute.tf                   # Golden image lookup, MIG and load balancer modules
@@ -376,6 +377,7 @@ Nothing in the repository holds values specific to one deployment except the dom
 | `REPO_NAME` | string | — (required) | GitHub repository the triggers watch |
 | `REPO_OWNER` | string | — (required) | GitHub user or organization that owns the repository |
 | `IAP_USER_EMAIL` | string | — (required) | Google account granted SSH and access to the WordPress admin area, both through IAP. Must be an account of the project's organization. Stored in the trigger substitutions |
+| `DOMAIN_NAMES` | string | — (required) | Domains of the site, comma separated (`example.com,www.example.com`). The first is the site address. Stored in the plan trigger substitutions |
 | `RESERVE_LB_IP` | string | `true` | `true` reserves a global IP for the load balancer outside Terraform. Must match `lb_use_reserved_ip` |
 | `ENVIRONMENT` | string | `prod` | Environment in the names of the load balancer IP and the triggers. Must match `environment` |
 
@@ -385,6 +387,7 @@ Nothing in the repository holds values specific to one deployment except the dom
 |---|---|---|---|
 | `_PROJECT_ID` | string | — (required) | Project ID; becomes `TF_VAR_project_id` |
 | `_IAP_USER_EMAIL` | string | — (required) | Operator email; becomes `TF_VAR_iap_user_email` (plan pipeline) |
+| `_DOMAIN_NAMES` | string | — (required) | Domains, comma separated; becomes `TF_VAR_domain_names` (plan pipeline) |
 | `_STATE_BUCKET` | string | — (required) | Bucket that holds the state and the saved plans, `<project_id>-tfstate` |
 | `_SAVE_PLAN` | string | `false` | `true` uploads the plan so it can be applied. Only the plan trigger on `main` sets it |
 | `_PLAN_BUILD_ID` | string | — (required) | `BUILD_ID` of the plan to apply (apply pipeline) |
@@ -399,7 +402,7 @@ Nothing in the repository holds values specific to one deployment except the dom
 | `project_id` | `string` | — (required) | Passed by the pipeline from `_PROJECT_ID` |
 | `iap_user_email` | `string` | — (required) | Passed by the pipeline from `_IAP_USER_EMAIL`. Validated as an email address at plan time. Gets SSH through IAP and the admin area behind IAP |
 | `environment` | `string` | — (required) | `prod` in `terraform.tfvars`. `dev` or `prod`; part of every resource name |
-| `domain_names` | `list(string)` | — (required) | Domains of the managed certificate. Set your own in `terraform.tfvars` |
+| `domain_names` | `string` | — (required) | Passed by the pipeline from `_DOMAIN_NAMES`. Domains served by the load balancer and included in the managed certificate, comma separated; any other `Host` gets a 403. The first one is the site address (`WP_HOME`, `WP_SITEURL`). Validated as lowercase hostnames at plan time |
 | `lb_use_reserved_ip` | `bool` | — (required) | `true` in `terraform.tfvars`: use the IP reserved by `setup.sh`. Must match `RESERVE_LB_IP` |
 | `waf_preview` | `bool` | — (required) | `true` in `terraform.tfvars`: the WAF rules only log. Set to `false` to enforce them |
 | `db_password_version` | `number` | — (required) | `1` in `terraform.tfvars`. Whole number, 1 or greater; raise it to [rotate the password](#rotate-the-database-password) |
@@ -463,17 +466,21 @@ cd gcp-wordpress-blueprint
 export REPO_NAME="gcp-wordpress-blueprint"
 export REPO_OWNER="your-github-username-or-org"
 export IAP_USER_EMAIL="you@example.com"     # Account of the organization: SSH and admin area through IAP
+export DOMAIN_NAMES="wordpress.example.com" # Domains of the site, comma separated; the first is the site address
 export RESERVE_LB_IP="true"                 # reserve a static IP for the load balancer (see below)
 ```
 
-The script stops with an error if `PROJECT_ID` or any of the first three is missing. `ENVIRONMENT` defaults to `prod`.
+The script stops with an error if `PROJECT_ID` or any of the first four is missing. `ENVIRONMENT` defaults to `prod`.
 
-Set your domain in `terraform/terraform.tfvars`:
+The domains are not written in the repository, like the project ID and the operator email: `configs/setup.sh` stores them in the plan triggers as the `_DOMAIN_NAMES` substitution. A fork that runs the bootstrap without exporting `DOMAIN_NAMES` stops there, and a plan without it fails validation, instead of requesting a certificate for someone else's domain.
+
+In `terraform/terraform.tfvars`, set the IP mode:
 
 ```hcl
-domain_names       = ["wordpress.example.com"]
 lb_use_reserved_ip = true   # must match RESERVE_LB_IP
 ```
+
+The plan commands below separate their substitutions with `;` (the leading `^;^`, see `gcloud topic escaping`), because `_DOMAIN_NAMES` may hold commas.
 
 #### Step 4: Connect the GitHub repository to Cloud Build
 
@@ -543,7 +550,7 @@ gcloud builds submit \
 gcloud builds submit \
   --project=$PROJECT_ID \
   --config=cloudbuild/terraform-plan.yaml \
-  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-tfstate,_IAP_USER_EMAIL=$IAP_USER_EMAIL,_SAVE_PLAN=true" \
+  --substitutions="^;^_PROJECT_ID=$PROJECT_ID;_STATE_BUCKET=${PROJECT_ID}-tfstate;_IAP_USER_EMAIL=$IAP_USER_EMAIL;_DOMAIN_NAMES=$DOMAIN_NAMES;_SAVE_PLAN=true" \
   --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-plan-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
@@ -671,6 +678,7 @@ mkdir -p tmp
 terraform init -backend-config="bucket=${PROJECT_ID}-tfstate"
 export TF_VAR_project_id=$PROJECT_ID
 export TF_VAR_iap_user_email=$IAP_USER_EMAIL
+export TF_VAR_domain_names=$DOMAIN_NAMES
 terraform destroy
 ```
 
@@ -837,7 +845,7 @@ Each entry has the rule that matched (`previewSecurityPolicy.priority`) and the 
 - Cloud SQL is accessible only via private IP within the VPC, and the build VM is denied any traffic to its range
 - SSH access exclusively through IAP (no open port 22 to the internet)
 - Database credentials stored in Secret Manager. The password is never in the repository, the Terraform state or a saved plan; on an instance it exists only in `wp-config.php`, written at boot by the startup script
-- `project_id` and the operator email are not written in the code or the configuration — they are passed as Cloud Build substitutions (`TF_VAR_project_id`, `TF_VAR_iap_user_email`), so the repository deploys to any project without being edited. The project ID is an identifier, not a credential, and appears in the screenshots below
+- `project_id`, the operator email and the domains are not written in the code or the configuration — they are passed as Cloud Build substitutions (`TF_VAR_project_id`, `TF_VAR_iap_user_email`, `TF_VAR_domain_names`), so the repository deploys to any project without being edited, and a fork cannot request a certificate for someone else's domain by mistake. The project ID is an identifier, not a credential, and appears in the screenshots below
 - One service account per pipeline job: pull request plans run with a read-only account, so code in a pull request cannot write anything; only the approved apply can
 - The Packer build VM runs without a service account, so nothing in it can use Google credentials
 - One service account per workload (WordPress instances, backup function runtime and build, scheduler), none with keys. Some roles are still broader than needed (see [Known Limitations](#known-limitations))

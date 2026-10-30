@@ -5,7 +5,8 @@ set -e
 # Variables
 #
 # Export them in your shell before running, so this file is never edited with real values:
-#   export PROJECT_ID="my-project" REPO_NAME="my-repo" REPO_OWNER="my-user" IAP_USER_EMAIL="me@example.com"
+#   export PROJECT_ID="my-project" REPO_NAME="my-repo" REPO_OWNER="my-user" IAP_USER_EMAIL="me@example.com" \
+#          DOMAIN_NAMES="example.com"
 # A variable that is not exported keeps the placeholder below, and the script stops.
 # ==============================================================
 export PROJECT_ID="${PROJECT_ID:-your-gcp-project-id}"
@@ -22,7 +23,12 @@ export APPLY_SA="terraform-apply-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 export PACKER_SA="packer-build-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 export REPO_NAME="${REPO_NAME:-your-repo-name}"
 export REPO_OWNER="${REPO_OWNER:-your-github-username-or-org}"
-export IAP_USER_EMAIL="${IAP_USER_EMAIL:-your-email-address}"   # Google account granted SSH access through IAP
+# Google account granted SSH and the WordPress admin area, both through IAP. It must be an account
+# of the project's organization: IAP uses the Google-managed OAuth client, which admits no one else.
+export IAP_USER_EMAIL="${IAP_USER_EMAIL:-your-email-address}"
+# Domains the site is served on, comma separated (example.com,www.example.com). Passed to the plan
+# triggers as _DOMAIN_NAMES, so it is never written in the repository.
+export DOMAIN_NAMES="${DOMAIN_NAMES:-your-domain-names}"
 
 # Static IP for the load balancer. Must match lb_use_reserved_ip in terraform/terraform.tfvars.
 #   true  — reserve a global IP here, outside Terraform. It survives terraform destroy, so the
@@ -32,7 +38,7 @@ export RESERVE_LB_IP="${RESERVE_LB_IP:-true}"
 export LB_IP_NAME="wp-blueprint-lb-ip-${ENVIRONMENT}"   # name the load balancer module looks up; do not change one without the other
 
 # Stop before creating anything if a required variable still has its placeholder.
-for var_name in PROJECT_ID REPO_NAME REPO_OWNER IAP_USER_EMAIL; do
+for var_name in PROJECT_ID REPO_NAME REPO_OWNER IAP_USER_EMAIL DOMAIN_NAMES; do
   if [[ "${!var_name}" == your-* ]]; then
     echo "ERROR: ${var_name} is not set. Export it before running this script." >&2
     exit 1
@@ -276,6 +282,8 @@ gcloud builds triggers create github \
 # PR plan trigger — fires automatically on every PR targeting main.
 # Runs terraform-plan.yaml: init, fmt, validate, plan, destructive change report.
 # Review only: _SAVE_PLAN=false, so the plan is not uploaded and cannot be applied.
+# The plan triggers separate their substitutions with ";" (the leading ^;^, see gcloud topic
+# escaping): _DOMAIN_NAMES may hold commas, which would otherwise split it into separate substitutions.
 gcloud builds triggers create github \
   --project=${PROJECT_ID} \
   --name="wp-blueprint-tf-plan-pr-${ENVIRONMENT}" \
@@ -283,7 +291,7 @@ gcloud builds triggers create github \
   --repo-owner="${REPO_OWNER}" \
   --pull-request-pattern="^main$" \
   --build-config="cloudbuild/terraform-plan.yaml" \
-  --substitutions="_PROJECT_ID=${PROJECT_ID},_STATE_BUCKET=${STATE_BUCKET},_IAP_USER_EMAIL=${IAP_USER_EMAIL},_SAVE_PLAN=false" \
+  --substitutions="^;^_PROJECT_ID=${PROJECT_ID};_STATE_BUCKET=${STATE_BUCKET};_IAP_USER_EMAIL=${IAP_USER_EMAIL};_DOMAIN_NAMES=${DOMAIN_NAMES};_SAVE_PLAN=false" \
   --service-account="projects/${PROJECT_ID}/serviceAccounts/${PLAN_SA}"
 
 # Main plan trigger — fires on push to main (a merged PR) when terraform/ files change.
@@ -297,7 +305,7 @@ gcloud builds triggers create github \
   --branch-pattern="^main$" \
   --included-files="terraform/**" \
   --build-config="cloudbuild/terraform-plan.yaml" \
-  --substitutions="_PROJECT_ID=${PROJECT_ID},_STATE_BUCKET=${STATE_BUCKET},_IAP_USER_EMAIL=${IAP_USER_EMAIL},_SAVE_PLAN=true" \
+  --substitutions="^;^_PROJECT_ID=${PROJECT_ID};_STATE_BUCKET=${STATE_BUCKET};_IAP_USER_EMAIL=${IAP_USER_EMAIL};_DOMAIN_NAMES=${DOMAIN_NAMES};_SAVE_PLAN=true" \
   --service-account="projects/${PROJECT_ID}/serviceAccounts/${PLAN_SA}"
 
 # Apply trigger — triggered manually after reviewing the plan generated on main.

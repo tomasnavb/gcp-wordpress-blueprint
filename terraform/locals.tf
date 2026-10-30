@@ -118,6 +118,9 @@ locals {
   # Every secret container: the ones above plus the password. IAM.tf grants access over all of them.
   secret_names = concat(keys(local.secret_values), [local.db_password_secret_name])
 
+  # The domains of var.domain_names as a list. The first one is the site address.
+  domain_names = [for domain in split(",", var.domain_names) : trimspace(domain)]
+
   # Admin area and login of WordPress, always behind IAP in this project: a local, not a variable, so
   # configuration cannot turn it off. A fresh WordPress is installed by whoever completes
   # /wp-admin/install.php first, and bots try it within hours of a new domain appearing in
