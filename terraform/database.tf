@@ -27,6 +27,14 @@ resource "google_sql_database_instance" "main" {
       }
     }
 
+    # Sunday (day 7) at 04:00 UTC, after the backup window. "stable" is "Week 2" in the console: the
+    # update comes 15 to 21 days after Google's notice, leaving time to reschedule it or set a deny period.
+    maintenance_window {
+      day          = 7
+      hour         = 4
+      update_track = "stable"
+    }
+
     ip_configuration {
       ipv4_enabled    = false
       private_network = module.vpc.network_id

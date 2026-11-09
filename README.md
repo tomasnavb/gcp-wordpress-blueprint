@@ -737,6 +737,53 @@ View the automated backups that point-in-time recovery is based on:
 gcloud sql backups list --instance=wp-blueprint-db-prod --project=$PROJECT_ID
 ```
 
+### Database maintenance
+
+Google applies Cloud SQL maintenance updates (database engine, operating system) with a restart: under 60 seconds of downtime on Enterprise edition, which this project uses. High availability does not avoid it: Google states that HA instances have the same downtime during maintenance. The window is set in [terraform/database.tf](terraform/database.tf): Sunday, 04:00 to 05:00 UTC, after the 02:00 backup, with `update_track = "stable"` ("Week 2" in the console), so an update comes 15 to 21 days after its notice.
+
+**Notice by email.** Set per user, not by Terraform: in the console, *User preferences → Communication*, turn on the Cloud SQL maintenance notifications. The notice arrives at least a week before the update. Upcoming maintenance:
+
+```bash
+gcloud sql instances describe wp-blueprint-db-prod \
+  --project=$PROJECT_ID \
+  --format="yaml(scheduledMaintenance)"
+```
+
+**Reschedule one update.** To the next window, or to a given time (UTC):
+
+```bash
+gcloud sql reschedule-maintenance wp-blueprint-db-prod \
+  --project=$PROJECT_ID \
+  --reschedule-type=SPECIFIC_TIME \
+  --schedule-time=2026-11-15T04:00:00Z
+```
+
+`--reschedule-type=NEXT_AVAILABLE_WINDOW` moves it to the next window, and `IMMEDIATE` applies it now.
+
+**Block maintenance for a period** (a launch, a sale), from 1 to 90 days. A `deny_maintenance_period` block in the `settings` of [terraform/database.tf](terraform/database.tf), deployed through a pull request like any other change:
+
+```hcl
+deny_maintenance_period {
+  start_date = "2026-11-20"
+  end_date   = "2026-12-05"
+  time       = "00:00:00"
+}
+```
+
+**Apply an update earlier,** at a time chosen by the operator (self-service maintenance). The instance restarts, and there is no rollback to the previous version:
+
+```bash
+gcloud sql instances describe wp-blueprint-db-prod \
+  --project=$PROJECT_ID \
+  --format="value(availableMaintenanceVersions)"
+
+gcloud sql instances patch wp-blueprint-db-prod \
+  --project=$PROJECT_ID \
+  --maintenance-version=VERSION
+```
+
+**Production option: Enterprise Plus.** Maintenance takes under a second of downtime on Enterprise Plus edition. It needs `instance_edition = "ENTERPRISE_PLUS"` and a tier of its machine series (for example `db-perf-optimized-N-2`), and costs more. Not used here for cost.
+
 ### Rotate the database password
 
 The password is written only when `db_password_version` changes, so rotating it is raising that number by one in `terraform/terraform.tfvars`, through a pull request like any other change:
