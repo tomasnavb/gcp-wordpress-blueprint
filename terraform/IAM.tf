@@ -94,6 +94,13 @@ resource "google_project_iam_member" "web_vm_log_writer" {
   member  = local.service_accounts.web
 }
 
+# Write metrics to Cloud Monitoring: the Ops Agent sends the VM and Apache metrics.
+resource "google_project_iam_member" "web_vm_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = local.service_accounts.web
+}
+
 # Read and write WordPress uploads in the uploads bucket, mounted with Cloud Storage FUSE.
 # roles/storage.objectUser on that bucket only: create, read and delete objects, nothing else.
 resource "google_storage_bucket_iam_member" "web_vm_uploads_user" {
@@ -103,7 +110,7 @@ resource "google_storage_bucket_iam_member" "web_vm_uploads_user" {
 }
 
 # IAM bindings take time to propagate. An instance that boots seconds after the bindings
-# above are created cannot read its secrets or write logs yet, and its startup script fails.
+# above are created cannot read its secrets or write logs and metrics yet, and its startup script fails.
 # The MIG depends on this wait instead of on the bindings directly (see compute.tf).
 resource "time_sleep" "web_vm_iam_propagation" {
   create_duration = "120s"
@@ -111,6 +118,7 @@ resource "time_sleep" "web_vm_iam_propagation" {
   depends_on = [
     google_secret_manager_secret_iam_member.web_vm_secret_access,
     google_project_iam_member.web_vm_log_writer,
+    google_project_iam_member.web_vm_metric_writer,
     google_storage_bucket_iam_member.web_vm_uploads_user,
   ]
 }

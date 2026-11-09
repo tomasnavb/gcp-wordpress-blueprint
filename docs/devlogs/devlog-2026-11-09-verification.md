@@ -1,6 +1,6 @@
 # Verification — 2026-11-09
 
-Checklist of the deploy from scratch that verifies the refactor (task R22 in [../to-do.md](../to-do.md)) and the block that followed the installer takeover (R28 to R32, T20, T32, the maintenance window of T36; see [devlog-2026-10-30.md](devlog-2026-10-30.md)). It replaces the checks of [devlog-2026-10-26-verification.md](devlog-2026-10-26-verification.md), which were left `pending` when that deploy was destroyed after E4. The deploy runs from the branch `refactor/naming-and-network` with `gcloud builds submit`, in a new project, before anything is merged to `main`.
+Checklist of the deploy from scratch that verifies the refactor (task R22 in [../to-do.md](../to-do.md)) and the block that followed the installer takeover (R28 to R32, T20, T32, the maintenance window of T36, the monitoring of T18; see [devlog-2026-10-30.md](devlog-2026-10-30.md)). It replaces the checks of [devlog-2026-10-26-verification.md](devlog-2026-10-26-verification.md), which were left `pending` when that deploy was destroyed after E4. The deploy runs from the branch `refactor/naming-and-network` with `gcloud builds submit`, in a new project, before anything is merged to `main`.
 
 How each test is run is in [../test-procedure.md](../test-procedure.md); this file records what this run found.
 
@@ -49,19 +49,34 @@ Result values: `pending`, `done`, `failed`, `skipped`. When a check passes, the 
 | C4 | The export job runs and its file is in `<project_id>-db-backups/exports/` | — | `pending` |
 | C5 | Failover (`tests/resilience/sql-failover.sh`): operation `DONE`, primary in the former standby zone, same private IP, site answering again. Record the downtime and the operation's `startTime` and `endTime` | — | `pending` |
 
-## Phase D — Changes through the pipeline
+## Phase D — Monitoring
 
 | # | Check | Tasks | Result |
 |---|---|---|---|
-| D1 | A plan after the first apply passes with `terraform-plan-sa` (ephemeral read of the password and refresh of the bucket objects) | R15 | `pending` |
-| D2 | Image build from the trigger: the build VM runs in the build subnet, without an external IP or a service account, reached through IAP | R12, R13 | `pending` |
-| D3 | The build VM cannot reach Cloud SQL's private range | R13 | `pending` |
-| D4 | A new image rolls out to the MIG without `_ALLOW_DESTRUCTIVE` | — | `pending` |
-| D5 | A rollout that replaces the function source zip passes without `_ALLOW_DESTRUCTIVE` | T06 | `pending` |
-| D6 | A plan with a destroy lists it as destructive; the apply rejects it without the flag | T01, R18 | `pending` |
-| D7 | An instance whose startup script fails is reported unhealthy and replaced | T04 | `pending` |
-| D8 | The plan and image build triggers on `main` start on their own, each with its own service account | R10, R15 | `pending` |
-| D9 | `configs/delete-default-network.sh` removes the default network and its firewall rules | R14 | `pending` |
+| D1 | The image build log shows the Ops Agent 2.73.0 installed and the status page check passing | T18 | `pending` |
+| D2 | On an instance: `google-cloud-ops-agent` running, no permission errors in its logs (`sudo journalctl -u google-cloud-ops-agent*`), and `curl -s localhost/server-status?auto` answering | T18 | `pending` |
+| D3 | Metrics Explorer shows `workload.googleapis.com/apache.requests` and `agent.googleapis.com/memory/percent_used` for both instances | T18 | `pending` |
+| D4 | Only the Apache error log in Cloud Logging (`log_id("apache_error")`), no `apache_access` | T18 | `pending` |
+| D5 | Before the installation the uptime check fails (content match), and passes from every region after it. The content match `wp-content/themes` is experimental: with the site up, `curl -s https://<domain>/` and pick a string that WordPress prints on the home page whatever the theme and that neither the installer nor the IAP sign-in contains (a candidate: the REST API link, `https://api.w.org/`), then replace it in `monitoring.tf` | T18 | `pending` |
+| D6 | The email channel receives the verification email or a test notification | T18 | `pending` |
+| D7 | The uptime alert fires during the failover (C5) if the downtime passes two minutes, or with the instances stopped, and closes when the site is back | T18 | `pending` |
+| D8 | The export alert targets the right entries: in Logs Explorer, its filter without the severity and status conditions matches the scheduler job and function request entries of the export run of C4. A real failure is not forced: it would need breaking the function | T18, T37 | `pending` |
+| D9 | The dashboard `wp-blueprint-dashboard-prod` shows data in every chart | T18 | `pending` |
+| D10 | A second plan after the apply shows no change to the dashboard | T18 | `pending` |
+
+## Phase E — Changes through the pipeline
+
+| # | Check | Tasks | Result |
+|---|---|---|---|
+| E1 | A plan after the first apply passes with `terraform-plan-sa` (ephemeral read of the password and refresh of the bucket objects) | R15 | `pending` |
+| E2 | Image build from the trigger: the build VM runs in the build subnet, without an external IP or a service account, reached through IAP | R12, R13 | `pending` |
+| E3 | The build VM cannot reach Cloud SQL's private range | R13 | `pending` |
+| E4 | A new image rolls out to the MIG without `_ALLOW_DESTRUCTIVE` | — | `pending` |
+| E5 | A rollout that replaces the function source zip passes without `_ALLOW_DESTRUCTIVE` | T06 | `pending` |
+| E6 | A plan with a destroy lists it as destructive; the apply rejects it without the flag | T01, R18 | `pending` |
+| E7 | An instance whose startup script fails is reported unhealthy and replaced | T04 | `pending` |
+| E8 | The plan and image build triggers on `main` start on their own, each with its own service account | R10, R15 | `pending` |
+| E9 | `configs/delete-default-network.sh` removes the default network and its firewall rules | R14 | `pending` |
 
 ## Phase F — Teardown
 

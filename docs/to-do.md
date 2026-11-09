@@ -99,7 +99,7 @@ Applies the naming convention of the architecture style guide (`[project]-[compo
 
 | ID | Task | Created | Status | Detail |
 |---|---|---|---|---|
-| T18 | Observability: Ops Agent, uptime check, alert policy | 2026-10-07 | `pending` | Backlog 14 |
+| T18 | Observability: Ops Agent, uptime check, alert policy. Implemented on 2026-11-09: Ops Agent 2.73.0 in the image (Apache metrics, Apache error log), HTTPS uptime check on the home page, alerts (uptime, certificate expiry, export failure, Cloud SQL CPU and memory) by email to the operator, dashboard | 2026-10-07 | `unverified` | Backlog 14; README, Monitoring and Alerting |
 | T19 | Static analysis in the plan pipeline (tflint, checkov) | 2026-10-07 | `pending` | Backlog 15 |
 | T20 | Pin the WordPress version and verify its checksum in the image build. Part of the refactor block | 2026-10-07 | `unverified` | Backlog 17 |
 
@@ -136,7 +136,7 @@ Changes to take the project from a portfolio deployment to one configured and do
 | T35 | Separate pipeline service accounts: read-only for pull request plans, which can run code from the PR, and the account with write roles for the apply only | 2026-10-14 | `pending` | Production review of 2026-10-14; implemented in R15 |
 | T46 | Google group for the administrators instead of the operator's user account, for both IAP accesses: SSH to the instances (`roles/iap.tunnelResourceAccessor`, `IAM.tf`) and the admin area behind IAP (`roles/iap.httpsResourceAccessor`, `iap_members` in `compute.tf`). Today both take `user:${var.iap_user_email}`; with a group, adding or removing an administrator is a change of group membership, not of Terraform | 2026-10-29 | `pending` | Refactor block, R30 |
 | T36 | Production values: `min_replicas` of at least 2 (zone fault tolerance; set in R32), Cloud SQL tier sized, maintenance window (set: Sunday 04:00 UTC, `stable`), Query Insights | 2026-10-14 | `pending` | Production review of 2026-10-14 |
-| T37 | Alerting that reaches someone: notification channel for the T18 alerts, export failure alert, and a billing budget alert | 2026-10-14 | `pending` | Production review of 2026-10-14 |
+| T37 | Alerting that reaches someone: notification channel for the T18 alerts, export failure alert, and a billing budget alert. The email channel and the export alert are in T18 (the export alert does not catch an export that fails inside Cloud SQL after it started); the budget alert is left | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 | T38 | Staging environment: a separate project with the same code, its own variable file and its own state. Includes renaming `terraform.tfvars` per environment | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 | T39 | SMTP relay for WordPress mail (port 25 is blocked on Compute Engine), with its credential in Secret Manager | 2026-10-14 | `pending` | Production review of 2026-10-14 |
 | T40 | Operating system patching: scheduled image rebuild or VM Manager, and rollback to the previous image documented | 2026-10-14 | `pending` | Production review of 2026-10-14 |

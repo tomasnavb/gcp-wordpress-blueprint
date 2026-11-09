@@ -194,6 +194,7 @@ grant_roles "${APPLY_SA}" \
   roles/storage.admin \
   roles/secretmanager.admin \
   roles/cloudscheduler.admin \
+  roles/monitoring.editor \
   roles/servicenetworking.networksAdmin \
   roles/logging.logWriter \
   roles/iam.roleAdmin \
@@ -209,6 +210,7 @@ grant_roles "${APPLY_SA}" \
 #   storage.admin           - application buckets
 #   secretmanager.admin     - WordPress secrets
 #   cloudscheduler.admin    - backup job
+#   monitoring.editor       - uptime check, alert policies, notification channel, dashboard
 #   networksAdmin           - Private Service Access (Cloud SQL private IP)
 #   logging.logWriter       - build logs (CLOUD_LOGGING_ONLY)
 #   iam.roleAdmin           - custom role of the backup function

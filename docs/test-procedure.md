@@ -61,6 +61,7 @@ Expected results:
 | `/wp-admin/admin-ajax.php` | 400 with the body `0`, which WordPress answers when no `action` is given; before the installation, 302 to `/wp-admin/install.php` | WordPress, without IAP: neither Cloud Armor nor IAP answers like that |
 | `/health.php` | 200 | WordPress |
 | `/xmlrpc.php` | 403 | Cloud Armor, "Block xmlrpc.php" |
+| `/server-status` | 403 | Apache: `mod_status`, which the Ops Agent reads from the instance itself, only answers requests from the VM (`Require local`) |
 | An upload | 200 | Backend bucket |
 | `http://` | 301 to `https://` | HTTP redirect URL map |
 

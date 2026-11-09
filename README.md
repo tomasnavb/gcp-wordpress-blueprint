@@ -209,6 +209,23 @@ WordPress instances are deployed from a golden image built with Packer (`packer/
 
 The export is triggered by a Cloud Scheduler job invoking a Cloud Function v2. An earlier version also took an on-demand snapshot every 4 hours; it was removed, because point-in-time recovery already covers that with finer granularity, and on-demand backups were never deleted.
 
+### Monitoring and Alerting
+
+Defined in [terraform/monitoring.tf](terraform/monitoring.tf). Every alert goes by email to the operator, `IAP_USER_EMAIL`, passed by the pipeline and never written in the repository.
+
+- **Uptime check on `https://<domain>/`,** every minute from three regions (Europe, US East, Asia Pacific), with the certificate validated. HTTPS only: uptime checks follow redirects, so a check on `http://` would measure the final HTTPS page, not the redirect, which the smoke tests check. The home page and not `/health.php`, because the home page needs the database: the check covers WordPress and Cloud SQL together, while `/health.php` stays healthy with the database down on purpose. The response must contain `wp-content/themes`: without that, before WordPress is installed, the check would follow the redirects to the installer and then to the IAP sign-in, and pass on a 200 from Google. The string is experimental: it depends on the active theme loading files from its folder, and is to be replaced by one that WordPress prints on the home page whatever the theme, chosen with `curl` on the deployed site.
+- **Ops Agent in the image,** at a pinned version from Google's signed apt repository, like gcsfuse. It sends the memory and disk use of the instances, which Compute Engine does not collect without an agent, the Apache metrics, and the Apache error log. It reads the Apache metrics from `mod_status` at `http://localhost/server-status`, which Debian restricts with `Require local`: a request for that path through the load balancer comes from Google's proxy ranges and gets a 403, which the smoke tests check. The Apache access log is not sent: it would repeat the load balancer request logs, already in Cloud Logging, and be paid for twice.
+- **Dashboard** `wp-blueprint-dashboard-prod`: Apache requests, workers, connections and traffic; CPU and memory of the instances; load balancer requests by response class and 95th percentile latency; Cloud SQL CPU, memory, connections and disk.
+
+| Alert | Fires when |
+|---|---|
+| `wp-blueprint-alert-uptime-prod` | The uptime check fails from two or more regions for two minutes. One region alone is usually a problem of that checker |
+| `wp-blueprint-alert-ssl-expiry-prod` | The certificate expires in less than 15 days. Google renews it by itself, but the renewal fails if a domain stops pointing to the load balancer |
+| `wp-blueprint-alert-export-failure-prod` | The scheduler job of the daily export fails, or the function answers 5xx. At most one email per hour |
+| `wp-blueprint-alert-db-cpu-prod`, `wp-blueprint-alert-db-memory-prod` | Cloud SQL CPU or memory above 80% for 10 minutes: the signal to size the tier up |
+
+The export alert covers starting the export, not finishing it: the function starts an asynchronous Cloud SQL operation and returns, so an export that starts and then fails inside Cloud SQL sends no alert.
+
 ### One Service Account per Pipeline Job
 The pipeline runs each job with its own service account, created by `configs/setup.sh`:
 
@@ -273,6 +290,7 @@ The other three values (database name, user and host) are not sensitive and are 
 | Secret Manager | Database credentials storage and access |
 | Cloud Functions v2 | Serverless backup orchestration |
 | Cloud Scheduler | Daily export trigger (cron) |
+| Cloud Monitoring | HTTPS uptime check, email alerts (site down, certificate expiry, export failure, Cloud SQL CPU and memory), dashboard. VM and Apache metrics from the Ops Agent in the image |
 | Cloud Storage | WordPress uploads (mounted on the instances, served through the CDN), database exports (90 days), function source code, Terraform state |
 | Packer (HashiCorp) | Golden image build pipeline |
 
@@ -307,7 +325,7 @@ gcp-wordpress-blueprint/
 │   ├── wordpress.pkr.hcl            # Packer template
 │   ├── variables.pkr.hcl            # Variables and the build network names
 │   └── scripts/
-│       ├── install.sh               # WordPress + PHP + Apache provisioning, language packs, HTTPS proxy config
+│       ├── install.sh               # WordPress + PHP + Apache provisioning, language packs, HTTPS proxy config, Ops Agent
 │       ├── checksums.sha256         # SHA256 of every file install.sh downloads (WordPress and language packs)
 │       └── update-checksums.sh      # Regenerates checksums.sha256 after a version change, checking the official SHA1
 │
@@ -324,6 +342,7 @@ gcp-wordpress-blueprint/
     ├── database.tf                  # Cloud SQL instance, database, user, password generated with ephemeral resources
     ├── functions.tf                 # Cloud Function v2 + Cloud Scheduler module
     ├── IAM.tf                       # Service accounts, custom role, bindings, IAM propagation waits
+    ├── monitoring.tf                # Uptime check, alert policies, email notification channel, dashboard
     ├── locals.tf                    # Resource names (naming convention), network tags, secret names and values, paths behind IAP
     ├── networking.tf                # VPC, subnets, firewall rules, Cloud Router and NAT (official modules)
     ├── outputs.tf                   # Load balancer IP, site URLs, certificate name
@@ -987,7 +1006,6 @@ Taken from a deploy from scratch of this repository, **before the refactor**: re
 
 Features not implemented in this version but planned as natural next steps:
 
-- **Cloud Monitoring & Alerting** — uptime checks on the load balancer IP, alert policies for Apache error rate and instance health, Cloud Ops Agent for OS-level and Apache metrics (requests/s, latency, error rate)
 - **Staging environment** — a second project with the same code, its own variable file and its own state, with the network in a separate root
 - **Terraform tests** — infrastructure validation using `terraform test` or Terratest
 - **Multi-region failover** — add a Cloud SQL cross-region replica that can be promoted, and a second MIG in another region behind the same global load balancer

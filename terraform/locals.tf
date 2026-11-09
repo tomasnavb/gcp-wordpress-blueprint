@@ -91,6 +91,16 @@ locals {
   scheduler_export_schedule    = "0 0 * * *" # Daily at midnight
   scheduler_export_backup_type = "export"    # Request body type the function expects
 
+  # Cloud Monitoring (monitoring.tf). Display names: Monitoring assigns the IDs itself.
+  alert_channel_name        = "${local.name_prefix}-alerts-email-${var.environment}"
+  uptime_check_name         = "${local.name_prefix}-uptime-https-${var.environment}"
+  alert_uptime_name         = "${local.name_prefix}-alert-uptime-${var.environment}"
+  alert_ssl_expiry_name     = "${local.name_prefix}-alert-ssl-expiry-${var.environment}"
+  alert_export_failure_name = "${local.name_prefix}-alert-export-failure-${var.environment}"
+  alert_db_cpu_name         = "${local.name_prefix}-alert-db-cpu-${var.environment}"
+  alert_db_memory_name      = "${local.name_prefix}-alert-db-memory-${var.environment}"
+  monitoring_dashboard_name = "${local.name_prefix}-dashboard-${var.environment}"
+
   # Custom IAM role of the backup function. Role IDs accept no hyphens: the one exception to the naming
   # convention.
   db_backup_role_id = "wpBlueprintDbBackup"

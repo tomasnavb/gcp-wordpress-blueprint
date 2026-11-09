@@ -29,6 +29,52 @@ apt-get update -y
 apt-cache madison gcsfuse | head -n 5
 apt-get install -y "gcsfuse=${GCSFUSE_VERSION}"
 
+echo ">>> Installing the Ops Agent..."
+# Sends VM metrics (memory and disk included, which Compute Engine does not collect by itself),
+# Apache metrics and the Apache error log to Cloud Monitoring and Cloud Logging. Same apt
+# repository host and key as gcsfuse, and the version pinned; to upgrade, change OPS_AGENT_VERSION.
+# The repository is added here instead of with Google's add-google-cloud-ops-agent-repo.sh, which
+# would be a script downloaded and run without a checksum. That script uses the same repository
+# for an exact version (google-cloud-ops-agent-<codename>-all).
+OPS_AGENT_VERSION="2.73.0"
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt google-cloud-ops-agent-${VERSION_CODENAME}-all main" \
+  > /etc/apt/sources.list.d/google-cloud-ops-agent.list
+apt-get update -y
+apt-cache madison google-cloud-ops-agent | head -n 5
+apt-get install -y "google-cloud-ops-agent=${OPS_AGENT_VERSION}~debian${VERSION_ID}"
+
+# Merged with the agent's built-in configuration (host metrics and syslog).
+#   - Apache metrics, read from mod_status at its default URL, http://localhost:80/server-status?auto.
+#     Debian enables mod_status with "Require local": the agent reads it from the VM itself, and a
+#     request through the load balancer, which comes from Google's proxy ranges, gets a 403.
+#   - Only the Apache error log. The access log would repeat the load balancer request logs, which
+#     are already in Cloud Logging, and would be paid for twice.
+# If pretty permalinks are ever enabled (mod_rewrite and AllowOverride, both off in this image),
+# WordPress's .htaccess sends every path that is not a file to index.php, /server-status included:
+# exclude it from those rules, or the agent stops receiving the Apache metrics.
+cat > /etc/google-cloud-ops-agent/config.yaml <<'YAMLEOF'
+metrics:
+  receivers:
+    apache:
+      type: apache
+  service:
+    pipelines:
+      apache:
+        receivers: [apache]
+logging:
+  receivers:
+    apache_error:
+      type: apache_error
+  service:
+    pipelines:
+      apache:
+        receivers: [apache_error]
+YAMLEOF
+
+# The build stops here if Apache does not answer the status page the agent reads.
+apache2ctl -M | grep -q status_module
+curl -fsS "http://localhost:80/server-status?auto" | grep -q '^Total Accesses:'
+
 echo ">>> Downloading WordPress and its language packs..."
 # Every download is pinned to an exact version and checked against the SHA256 in checksums.sha256,
 # committed in the repository (uploaded to /tmp by the Packer template). Nothing is extracted until
@@ -178,6 +224,12 @@ chown -R www-data:www-data /var/www/html
 
 echo ">>> Enabling services on boot..."
 systemctl enable apache2
+systemctl enable google-cloud-ops-agent
+
+# The build VM has no service account, so the agent cannot send anything during the build. Stop it
+# and drop what it buffered, so the instances do not send build-time logs as their own.
+systemctl stop google-cloud-ops-agent
+rm -rf /var/lib/google-cloud-ops-agent/fluent-bit/buffers
 
 echo ">>> Disk usage of the image..."
 # Recorded in the build log, to see how much of the disk the image uses.

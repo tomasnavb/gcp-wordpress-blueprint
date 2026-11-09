@@ -157,6 +157,9 @@ expect_wordpress "/wp-admin/admin-ajax.php (WordPress, no IAP)" "400" "0" \
   "$(request_with_body /wp-admin/admin-ajax.php)"
 expect_status "/health.php" "200" "$(request https /health.php)"
 expect_status "/xmlrpc.php (Cloud Armor, Block xmlrpc.php)" "403" "$(request https /xmlrpc.php)"
+# mod_status, read by the Ops Agent from the instance itself. Apache allows it only from the VM
+# (Require local); through the load balancer the client is Google's proxy, so Apache answers 403.
+expect_status "/server-status (Apache, Require local)" "403" "$(request https /server-status)"
 if [[ -n "$UPLOAD_PATH" ]]; then
   expect_status "Upload ${UPLOAD_PATH} (backend bucket)" "200" "$(request https "$UPLOAD_PATH")"
 else
