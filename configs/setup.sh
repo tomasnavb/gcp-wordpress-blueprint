@@ -196,6 +196,7 @@ grant_roles "${APPLY_SA}" \
   roles/cloudscheduler.admin \
   roles/monitoring.editor \
   roles/logging.configWriter \
+  roles/iap.admin \
   roles/servicenetworking.networksAdmin \
   roles/logging.logWriter \
   roles/iam.roleAdmin \
@@ -214,6 +215,9 @@ grant_roles "${APPLY_SA}" \
 #   monitoring.editor       - uptime check, alert policies, notification channel, dashboard
 #   logging.configWriter    - the notification rule Cloud Logging creates for a log-based alert
 #                             (logging.notificationRules.create), which monitoring.editor lacks
+#   iap.admin               - access to the admin area: IAM policy of the backend service behind IAP
+#                             (iap.webServices.getIamPolicy and setIamPolicy). The narrowest role
+#                             that can write it; iam.securityAdmin would cover the whole project
 #   networksAdmin           - Private Service Access (Cloud SQL private IP)
 #   logging.logWriter       - build logs (CLOUD_LOGGING_ONLY)
 #   iam.roleAdmin           - custom role of the backup function

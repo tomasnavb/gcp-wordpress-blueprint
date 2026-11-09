@@ -212,3 +212,26 @@ Error: Error waiting for Creating SecurityPolicy "wp-blueprint-lb-armor-iap-prod
 | Ask for a quota increase | 27 | **Dropped.** Not reproducible: every other project deploying the repository hits the same limit |
 
 **Fix.** `iap_deny_rules` holds only the host rule; the login rate limit stays. The README and the rule table of devlog-2026-10-30 say the WAF is on the public backend only, and why. The policy behind IAP was never created, so nothing had to be removed.
+
+### E6 — The apply cannot grant access to the admin area
+
+Step 8, the apply of a plan generated after E5 (the operator email is replaced by `<operator-email>`):
+
+```text
+Error: Error retrieving IAM policy for iap webbackendservice "projects/gcp-wordpress-test-v2/iap_web/compute/services/wp-blueprint-lb-backend-iap-prod": googleapi: Error 403: Permission 'iap.webServices.getIamPolicy' denied on resource '//iap.googleapis.com/projects/gcp-wordpress-test-v2/iap_web/compute/services/wp-blueprint-lb-backend-iap-prod' (or it may not exist).
+
+  with module.global_external_lb.google_iap_web_backend_service_iam_member.accessors["user:<operator-email>"],
+  on modules/global_external_lb/main.tf line 306, in resource "google_iap_web_backend_service_iam_member" "accessors":
+```
+
+An earlier apply of this session used a plan generated before the fix of E5 and hit the same quota error again; it is not a separate issue.
+
+**Cause.** The member binding of R30 reads the IAM policy of the backend service behind IAP and writes it back. None of the roles of `terraform-apply-sa` holds `iap.webServices.*` permissions. From [IAP roles and permissions](https://docs.cloud.google.com/iam/docs/roles-permissions/iap): `getIamPolicy` is in `iap.admin`, `iam.securityAdmin` and `iam.securityReviewer`; `setIamPolicy` only in `iap.admin` and `iam.securityAdmin`. `terraform-plan-sa` already reads it through `iam.securityReviewer`; the plan did not fail only because the backend service did not exist yet. Same class of error as E3: the pipeline roles were not reviewed when the resource was added.
+
+**Fix.** `configs/setup.sh` grants `roles/iap.admin` to `terraform-apply-sa`: the narrowest role that writes the policy, where `iam.securityAdmin` would cover the IAM of the whole project. In this project the binding is added by hand:
+
+```bash
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:terraform-apply-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/iap.admin"
+```
