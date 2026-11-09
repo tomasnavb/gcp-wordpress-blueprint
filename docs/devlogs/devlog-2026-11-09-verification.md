@@ -28,12 +28,12 @@ Result values: `pending`, `done`, `failed`, `skipped`. When a check passes, the 
 
 | # | Check | Tasks | Result |
 |---|---|---|---|
-| B1 | Smoke tests before the installation (`tests/smoke/edge-security.sh`, without upload path): all pass, with `/` and `admin-ajax.php` answering 302 to the installer | R28, R30 | `pending` |
+| B1 | Smoke tests before the installation (`tests/smoke/edge-security.sh`, without upload path): all pass, with `/` and `admin-ajax.php` answering 302 to the installer | R28, R30 | `skipped` (run after the installation, not before) |
 | B2 | Manual check 1: the installer only through IAP; an account outside `iap_members` is refused | R30 | `pending` |
-| B3 | Manual check 2: installation by the operator through IAP, in English | R30 | `pending` |
-| B4 | Manual checks 3 to 8: site language list, no application passwords, no file changes from the admin panel, links with the site's domain, public site without sign-in, sign-out | R29, R31, T05 | `pending` |
+| B3 | Manual check 2: installation by the operator through IAP, in English | R30 | `done` |
+| B4 | Manual checks 3 to 8: site language list, no application passwords, no file changes from the admin panel, links with the site's domain, public site without sign-in, sign-out | R29, R31, T05 | `done` (English and the ten languages listed) |
 | B5 | An image uploaded from WordPress is stored as `wp-content/uploads/...` in the uploads bucket and served by the backend bucket | R23, R24 | `pending` |
-| B6 | Smoke tests after the installation, with the upload path: all pass, `admin-ajax.php` answering 400 with body `0` | R28, R30 | `pending` |
+| B6 | Smoke tests after the installation, with the upload path: all pass, `admin-ajax.php` answering 400 with body `0` | R28, R30 | `pending` (all 21 edge checks passed after E7; the upload check is left) |
 | B7 | The uploads bucket stays private: public access prevention enforced, and the object URL on `storage.googleapis.com` is denied | R24 | `pending` |
 | B8 | Cloud CDN hits on uploads and on theme assets; none on HTML or the admin area | R25 | `pending` |
 | B9 | More than 5 `POST /wp-login.php` per minute from one IP answer 429; over 50 in 10 minutes, the IP is banned. Note whether throttled requests count toward the ban | R26 | `pending` |

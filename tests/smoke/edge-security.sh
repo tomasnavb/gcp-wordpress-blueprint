@@ -56,10 +56,44 @@ request_with_body() {
     "https://${DOMAIN}${path}"
 }
 
+# Colors only on a terminal, and never with NO_COLOR set (https://no-color.org).
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  GREEN=$'\e[32m' RED=$'\e[31m' YELLOW=$'\e[33m' BOLD=$'\e[1m' DIM=$'\e[2m' RESET=$'\e[0m'
+else
+  GREEN="" RED="" YELLOW="" BOLD="" DIM="" RESET=""
+fi
+PASSES=0
+SKIPS=0
+
+# Shortens what a check got, for the output: the IAP sign-in URL is hundreds of characters long and
+# only its host matters. Any other location is cut at 80 characters.
+short() {
+  local got="$1"
+  local status="${got%% *}" location="${got#* }"
+  [[ "$location" == "$got" ]] && location=""
+  if [[ "$location" == https://accounts.google.com/* ]]; then
+    location="accounts.google.com (IAP sign-in)"
+  elif [[ ${#location} -gt 80 ]]; then
+    location="${location:0:77}..."
+  fi
+  printf '%s %s' "$status" "$location"
+}
+
 report() {
   local result="$1" name="$2" got="$3"
-  printf '%-4s  %-58s  %s\n' "$result" "$name" "$got"
-  [[ "$result" == "FAIL" ]] && FAILURES=$((FAILURES + 1))
+  local color="$GREEN"
+  [[ "$result" == "FAIL" ]] && color="$RED"
+  printf '%s%-4s%s  %-58s  %s%s%s\n' "$color$BOLD" "$result" "$RESET" "$name" "$DIM" "$(short "$got")" "$RESET"
+  if [[ "$result" == "FAIL" ]]; then FAILURES=$((FAILURES + 1)); else PASSES=$((PASSES + 1)); fi
+}
+
+skip() {
+  printf '%s%-4s%s  %s\n' "$YELLOW$BOLD" "SKIP" "$RESET" "$1"
+  SKIPS=$((SKIPS + 1))
+}
+
+section() {
+  printf '\n%s%s%s\n' "$BOLD" "$1" "$RESET"
 }
 
 # Passes when the status is one of the expected codes (space separated).
@@ -137,10 +171,9 @@ expect_iap() {
   fi
 }
 
-echo "Edge security smoke tests: https://${DOMAIN} at ${LB_IP}"
-echo ""
+printf '%sEdge security smoke tests:%s https://%s at %s\n' "$BOLD" "$RESET" "$DOMAIN" "$LB_IP"
 
-echo "--- Hosts: only the site's domains are served (Cloud Armor, Block unknown hosts)"
+section "Hosts: only the site's domains are served (Cloud Armor, Block unknown hosts)"
 # -k: these requests use the IP or another name, which the certificate does not cover.
 expect_status "Host: the load balancer IP" "403" \
   "$(curl -sk -o /dev/null --max-time 20 -w '%{http_code} %{redirect_url}' "https://${LB_IP}/")"
@@ -154,15 +187,13 @@ else
   report FAIL "Host: the site's domain (expected 200, or 302 to the installer)" "$got"
 fi
 
-echo ""
-echo "--- Admin area and login: only through IAP"
+section "Admin area and login: only through IAP"
 expect_iap "/wp-admin/" "$(request https /wp-admin/)"
 expect_iap "/wp-admin" "$(request https /wp-admin)"
 expect_iap "/wp-admin/install.php" "$(request https /wp-admin/install.php)"
 expect_iap "/wp-login.php" "$(request https /wp-login.php)"
 
-echo ""
-echo "--- Path variants that would skip the IAP path rules (Cloud Armor, Block protected paths outside IAP)"
+section "Path variants that would skip the IAP path rules (Cloud Armor, Block protected paths outside IAP)"
 expect_blocked "/wp-login.php/x" "$(request https /wp-login.php/x)"
 expect_blocked "//wp-admin/install.php" "$(request https //wp-admin/install.php --path-as-is)"
 expect_blocked_or_normalized "/./wp-admin/" "/wp-admin/" "$(request https /./wp-admin/ --path-as-is)"
@@ -170,8 +201,7 @@ expect_blocked "/wp-%61dmin/ (encoded a)" "$(request https /wp-%61dmin/)"
 expect_blocked "/WP-LOGIN.PHP" "$(request https /WP-LOGIN.PHP)"
 expect_blocked_or_normalized "/wp-admin/admin-ajax.php/../install.php" "/wp-admin/install.php"   "$(request https /wp-admin/admin-ajax.php/../install.php --path-as-is)"
 
-echo ""
-echo "--- Public paths"
+section "Public paths"
 # admin-ajax.php is used by the public site, so it must reach WordPress without IAP. Without an action
 # WordPress answers 400 with the body "0" (see expect_wordpress).
 expect_wordpress "/wp-admin/admin-ajax.php (WordPress, no IAP)" "400" "0" \
@@ -184,11 +214,10 @@ expect_status "/server-status (Apache, Require local)" "403" "$(request https /s
 if [[ -n "$UPLOAD_PATH" ]]; then
   expect_status "Upload ${UPLOAD_PATH} (backend bucket)" "200" "$(request https "$UPLOAD_PATH")"
 else
-  echo "SKIP  Upload (no upload-path given)"
+  skip "Upload (no upload-path given)"
 fi
 
-echo ""
-echo "--- HTTP"
+section "HTTP"
 got=$(request http /)
 # The load balancer writes the default port in the redirect (https://<domain>:443/): the same URL.
 if [[ "${got%% *}" == "301" ]]   && [[ "${got#* }" == https://${DOMAIN}/* || "${got#* }" == https://${DOMAIN}:443/* ]]; then
@@ -198,8 +227,9 @@ else
 fi
 
 echo ""
+SUMMARY="${PASSES} passed, ${FAILURES} failed, ${SKIPS} skipped"
 if [[ "$FAILURES" -gt 0 ]]; then
-  echo "${FAILURES} check(s) failed."
+  printf '%s%s%s\n' "$RED$BOLD" "$SUMMARY" "$RESET"
   exit 1
 fi
-echo "All checks passed."
+printf '%s%s. All checks passed.%s\n' "$GREEN$BOLD" "$SUMMARY" "$RESET"
