@@ -28,9 +28,9 @@ resource "google_monitoring_notification_channel" "email" {
 #
 # The content match avoids a false pass before WordPress is installed: / redirects to the installer,
 # the installer to the IAP sign-in, and the check would follow the chain to a 200 from Google.
-# Experimental: "wp-content/themes" depends on the active theme loading files from its folder. To be
-# replaced, once the site is up, by a string checked with curl that WordPress prints on the home page
-# whatever the theme (devlog-2026-11-09-verification.md, D5).
+# "https://api.w.org/" is the REST API link WordPress prints in the <head> of every public page,
+# whatever the theme. Neither the IAP sign-in nor install.php, which does not load the site's <head>,
+# contains it (checked with curl on the deployed site, devlog-2026-11-09-verification.md, D5).
 resource "google_monitoring_uptime_check_config" "https" {
   depends_on   = [google_project_service.gcp_services]
   display_name = local.uptime_check_name
@@ -53,7 +53,7 @@ resource "google_monitoring_uptime_check_config" "https" {
   }
 
   content_matchers {
-    content = "wp-content/themes"
+    content = "https://api.w.org/"
     matcher = "CONTAINS_STRING"
   }
 

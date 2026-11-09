@@ -29,15 +29,15 @@ Result values: `pending`, `done`, `failed`, `skipped`. When a check passes, the 
 | # | Check | Tasks | Result |
 |---|---|---|---|
 | B1 | Smoke tests before the installation (`tests/smoke/edge-security.sh`, without upload path): all pass, with `/` and `admin-ajax.php` answering 302 to the installer | R28, R30 | `skipped` (run after the installation, not before) |
-| B2 | Manual check 1: the installer only through IAP; an account outside `iap_members` is refused | R30 | `pending` |
+| B2 | Manual check 1: the installer only through IAP; an account outside `iap_members` is refused | R30 | `skipped` (no second account in the organization. An account outside it is refused by design: the Google-managed OAuth client of IAP only admits accounts of the organization) |
 | B3 | Manual check 2: installation by the operator through IAP, in English | R30 | `done` |
-| B4 | Manual checks 3 to 8: site language list, no application passwords, no file changes from the admin panel, links with the site's domain, public site without sign-in, sign-out | R29, R31, T05 | `pending` (check 3 passed: English and the ten languages listed; checks 4 to 8 left) |
-| B5 | An image uploaded from WordPress is stored as `wp-content/uploads/...` in the uploads bucket and served by the backend bucket | R23, R24 | `pending` |
-| B6 | Smoke tests after the installation, with the upload path: all pass, `admin-ajax.php` answering 400 with body `0` | R28, R30 | `pending` (all 21 edge checks passed after E7; the upload check is left) |
-| B7 | The uploads bucket stays private: public access prevention enforced, and the object URL on `storage.googleapis.com` is denied | R24 | `pending` |
-| B8 | Cloud CDN hits on uploads and on theme assets; none on HTML or the admin area | R25 | `pending` |
-| B9 | More than 5 `POST /wp-login.php` per minute from one IP answer 429; over 50 in 10 minutes, the IP is banned. Note whether throttled requests count toward the ban | R26 | `pending` |
-| B10 | The load balancer logs show the Cloud Armor rule of each denial (rules 50, 100, 150) and the WAF matches in preview (`jsonPayload.previewSecurityPolicy`) | R26 | `pending` |
+| B4 | Manual checks 3 to 8: site language list, no application passwords, no file changes from the admin panel, links with the site's domain, public site without sign-in, sign-out | R29, R31, T05 | `pending` (checks 3 to 7 passed: ten languages listed, no application passwords, no "Add New" in Plugins, every link on the home page with `https://<domain>`, public site with its styles and no sign-in; check 8 left) |
+| B5 | An image uploaded from WordPress is stored as `wp-content/uploads/...` in the uploads bucket and served by the backend bucket | R23, R24 | `done` (`200` with `server: UploadServer`: served by Cloud Storage through the backend bucket; object at `wp-content/uploads/2026/11/`) |
+| B6 | Smoke tests after the installation, with the upload path: all pass, `admin-ajax.php` answering 400 with body `0` | R28, R30 | `done` (all edge checks passed after E7, the upload included) |
+| B7 | The uploads bucket stays private: public access prevention enforced, and the object URL on `storage.googleapis.com` is denied | R24 | `done` (`403` on the object URL at `storage.googleapis.com`) |
+| B8 | Cloud CDN hits on uploads and on theme assets; none on HTML or the admin area | R25 | `done` (upload and theme `style.min.css`: `age` set, `max-age=3600`; home page: no `age`, not cached. The admin area is behind IAP and was not measured: HTML, same rule as the home page) |
+| B9 | More than 5 `POST /wp-login.php` per minute from one IP answer 429; over 50 in 10 minutes, the IP is banned. Note whether throttled requests count toward the ban | R26 | `done` (`429` from priority 200 once past 5 POSTs in a minute, before IAP. The ban, over 50 in 10 minutes, `skipped`: it would block the operator IP for 30 minutes) |
+| B10 | The load balancer logs show the Cloud Armor rule of each denial (rules 50, 100, 150) and the WAF matches in preview (`jsonPayload.previewSecurityPolicy`) | R26 | `pending` (priority 200 and 50 seen; 50 also blocked real scanners requesting `/.env`, `/.env.bak` and wallet paths with the load balancer IP as host; 100 and 150 left) |
 
 ## Phase C — Database
 
@@ -57,7 +57,7 @@ Result values: `pending`, `done`, `failed`, `skipped`. When a check passes, the 
 | D2 | On an instance: `google-cloud-ops-agent` running, no permission errors in its logs (`sudo journalctl -u google-cloud-ops-agent*`), and `curl -s localhost/server-status?auto` answering | T18 | `pending` |
 | D3 | Metrics Explorer shows `workload.googleapis.com/apache.requests` and `agent.googleapis.com/memory/percent_used` for both instances | T18 | `pending` |
 | D4 | Only the Apache error log in Cloud Logging (`log_id("apache_error")`), no `apache_access` | T18 | `pending` |
-| D5 | Before the installation the uptime check fails (content match), and passes from every region after it. The content match `wp-content/themes` is experimental: with the site up, `curl -s https://<domain>/` and pick a string that WordPress prints on the home page whatever the theme and that neither the installer nor the IAP sign-in contains (a candidate: the REST API link, `https://api.w.org/`), then replace it in `monitoring.tf` | T18 | `pending` |
+| D5 | Before the installation the uptime check fails (content match), and passes from every region after it. The content match `wp-content/themes` was experimental: with the site up, `curl -s https://<domain>/` showed the REST API link `https://api.w.org` on the home page, which WordPress prints whatever the theme; it replaced the first string in `monitoring.tf` | T18 | `pending` (string replaced; the uptime check passing from every region with it is left) |
 | D6 | The uptime alert email reaches `IAP_USER_EMAIL` while the site is not installed (D5). Email channels need no verification | T18 | `pending` |
 | D7 | The uptime alert fires during the failover (C5) if the downtime passes two minutes, or with the instances stopped, and closes when the site is back | T18 | `pending` |
 | D8 | The export alert targets the right entries: in Logs Explorer, its filter without the severity and status conditions matches the scheduler job and function request entries of the export run of C4. A real failure is not forced: it would need breaking the function | T18, T37 | `pending` |
