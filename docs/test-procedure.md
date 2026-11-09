@@ -11,6 +11,7 @@ The edge security tested here comes from the installer takeover of the 2026-10-2
 | 1. Static checks | The configuration is well formed | Before every commit, and in the plan pipeline on every PR | `terraform fmt -check -recursive`, `terraform validate`, `packer fmt -check`, `packer validate` |
 | 2. Smoke tests | The deployed site answers as expected from outside | After every apply | [tests/smoke/edge-security.sh](../tests/smoke/edge-security.sh) |
 | 3. Manual checks | What needs a browser and a person: signing in with Google, the installer, the admin panel | After a deploy from scratch, and after any change to the load balancer, Cloud Armor, IAP or `wp-config.php` | The steps in [Level 3](#level-3-manual-checks) |
+| 4. Resilience | The site comes back after a Cloud SQL failover, and how long it is down | After a deploy from scratch, once WordPress is installed, and after any change to the Cloud SQL instance. Never with real traffic | [tests/resilience/sql-failover.sh](../tests/resilience/sql-failover.sh) |
 
 Not covered yet: tests of the Terraform configuration itself (`terraform test`), which would check in CI, without deploying anything, that the modules build the expected rules and reject invalid input.
 
@@ -87,3 +88,27 @@ Two Google accounts of the organization are needed: one in `iap_members`, and on
 8. **Sign out.** After signing out of WordPress, `https://<domain>/wp-admin/` still goes through IAP; after signing out of Google too, it asks for the Google sign-in again.
 
 Record each check in the verification checklist of the deploy, with its result (`done`, `failed`, `skipped`) and the exact text of any error.
+
+## Level 4: resilience
+
+The script fails over the Cloud SQL instance: it moves the primary to the standby zone, as Google does when the primary zone fails. It changes the project, so it asks for the instance name before acting, and it is run on a test deploy only:
+
+```bash
+bash tests/resilience/sql-failover.sh <project_id> <domain> <load-balancer-ip>
+```
+
+It needs `gcloud`, signed in with permission to fail over the instance (`roles/cloudsql.editor`), and `curl`. Before acting it checks that the instance is `RUNNABLE` and `REGIONAL` and that the home page answers; if not, it changes nothing.
+
+While the failover runs, it requests the home page once a second. The home page needs the database, so it answers 500 while the database is unreachable. `/health.php` does not touch the database, so the instances stay healthy and the load balancer keeps sending them traffic.
+
+Expected results:
+
+| Check | Expected |
+|---|---|
+| Failover operation | `DONE`, without an error |
+| Downtime | About a minute or less: Google states about 60 seconds for a failover. Each failed request is printed with its time and status |
+| Primary zone | Changed to the zone the standby was in |
+| Private IP | The same as before: the instances reconnect without any change |
+| Site | Answering again, ten requests in a row |
+
+The downtime and the times of the operation (`startTime`, `endTime`) go in the verification checklist of the deploy. A second run moves the primary back to its first zone.
