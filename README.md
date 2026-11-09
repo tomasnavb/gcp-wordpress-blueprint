@@ -167,10 +167,12 @@ A new upload gets a new file name and is never served stale. The TTL bounds how 
 | 100 | `xmlrpc.php`. Not used by this site, and `system.multicall` tries hundreds of passwords in one request | `403` | — (never routed there) |
 | 150 | A path that contains `/wp-admin` or `/wp-login.php`, after decoding and lowercasing it, except `/wp-admin/admin-ajax.php` | `403` | — |
 | 200 | `POST` to `wp-login.php`, per IP | — (the login is behind IAP) | 5 attempts per minute, `429` over that; over 50 in 10 minutes, the IP is banned for 30 minutes |
-| 1000–1010 | Preconfigured WAF rules, OWASP Core Rule Set 4.22, sensitivity 1 | `403`, in **preview** (`waf_preview = true`): they only log what they would block | Same |
+| 1000–1010 | Preconfigured WAF rules, OWASP Core Rule Set 4.22, sensitivity 1 | `403`, in **preview** (`waf_preview = true`): they only log what they would block | — (see below) |
 | default | Everything else | Allowed | Allowed |
 
 The login rate limit still matters behind IAP: a Google account with access, if compromised, could try WordPress passwords. The policy of the backend behind IAP also sees the requests IAP is about to reject, since it runs first.
+
+The WAF rules are only on the public backend. A project allows 20 Cloud Armor rules with an expression across all its policies (quota `SECURITY_POLICY_CEVAL_RULES`), WAF rules included: the public policy uses 14 and the one behind IAP 2. Behind IAP only the operator, already signed in with Google, reaches WordPress, and there the WAF would mostly flag the post editor, which sends HTML and scripts. What it gives up: a stolen operator session is not filtered by the WAF. If more rules are needed, the rule sets can be grouped, up to five per rule.
 
 The WAF rules start in preview because the WordPress admin area sends HTML and scripts that can look like attacks. Their matches are reviewed in the load balancer logs, which record every request and Cloud Armor's decision on it, before they are enforced (see [Review and enforce the WAF rules](#review-and-enforce-the-waf-rules)).
 

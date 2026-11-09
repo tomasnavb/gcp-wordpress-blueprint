@@ -180,3 +180,35 @@ Error: Error creating SecurityPolicy: googleapi: Error 400: Invalid value for fi
 | 150, paths | `/wp-admin\|/wp-admin(/\|$)\|/wp-login[.]php` | `/wp-admin\|/wp-admin/\|/wp-admin$\|/wp-login[.]php` |
 
 The new expressions were generated with the module's own Terraform code and compared with the old ones on 27 cases (valid and invalid hosts, with and without a port; the path variants of the smoke tests and public paths): no difference. The apply that confirms Cloud Armor accepts them is the next one.
+
+### E5 — Cloud Armor quota of rules with an expression
+
+Step 8, the apply after E3 and E4. The public security policy was created, so Cloud Armor accepts the expressions without groups (E4); the policy behind IAP failed:
+
+```text
+Error: Error waiting for Creating SecurityPolicy "wp-blueprint-lb-armor-iap-prod": Quota 'SECURITY_POLICY_CEVAL_RULES' exceeded.  Limit: 20.0 globally.
+	metric name = compute.googleapis.com/security_policy_ceval_rules
+	limit name = SECURITY-POLICY-CEVAL-RULES-per-project
+	limit = 20
+
+  with module.global_external_lb.google_compute_security_policy.iap[0],
+  on modules/global_external_lb/main.tf line 529, in resource "google_compute_security_policy" "iap":
+```
+
+**Cause.** The quota counts every rule with an expression across all the global security policies of the project, preconfigured WAF rules included ([Cloud Armor quotas and limits](https://docs.cloud.google.com/armor/quotas)); the default rule (`*`) does not count. When R30 split the policy in two, the eleven WAF rules went into both:
+
+| Policy | Rules with an expression | Total |
+|---|---|---|
+| Public | 50 hosts, 100 xmlrpc, 150 protected paths, 11 WAF | 14 |
+| Behind IAP | 50 hosts, 200 login rate limit, 11 WAF | 13 |
+| Project | | 27 > 20 |
+
+**Options considered.**
+
+| Option | Rules | Outcome |
+|---|---|---|
+| No WAF in the policy behind IAP | 16 | **Chosen.** Behind IAP only the operator, already signed in with Google, reaches WordPress; there the WAF would mostly flag the post editor. Gives up WAF filtering of a stolen operator session |
+| Group the rule sets, up to five `evaluatePreconfiguredWaf()` per rule | 11 | Kept as the next step if more rules are needed. One priority for five rule sets makes removing a noisy one a change to a shared rule |
+| Ask for a quota increase | 27 | **Dropped.** Not reproducible: every other project deploying the repository hits the same limit |
+
+**Fix.** `iap_deny_rules` holds only the host rule; the login rate limit stays. The README and the rule table of devlog-2026-10-30 say the WAF is on the public backend only, and why. The policy behind IAP was never created, so nothing had to be removed.

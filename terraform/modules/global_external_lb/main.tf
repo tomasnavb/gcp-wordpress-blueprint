@@ -440,12 +440,18 @@ locals {
   ]
 
   # Deny rules of each policy. Neither list may repeat a priority.
+  # The WAF rules go only in the public policy. A project allows 20 rules with an expression across
+  # all its security policies (quota SECURITY_POLICY_CEVAL_RULES), WAF rules included, and the WAF in
+  # both policies made 27. Behind IAP only the operator, already signed in with Google, reaches
+  # WordPress: IAP rejects everyone else before the instances. There the WAF would mostly flag the
+  # post editor, which sends HTML and scripts. What it gives up: a stolen operator session is not
+  # filtered by the WAF.
   public_deny_rules = concat(
     [local.rule_unknown_hosts, local.rule_xmlrpc],
     local.iap_enabled ? [local.rule_protected_paths] : [],
     local.rules_waf,
   )
-  iap_deny_rules = concat([local.rule_unknown_hosts], local.rules_waf)
+  iap_deny_rules = [local.rule_unknown_hosts]
 
   # Login attempts per client IP. Only POST: loading the login page is not an attempt.
   # Attempts over rate_limit_threshold get a 429. An IP that goes over ban_threshold is banned for
@@ -525,12 +531,12 @@ resource "google_compute_security_policy" "wordpress" {
 }
 
 # Security policy of the backend behind IAP. It runs before IAP, so it also sees the requests IAP is
-# about to reject: the host rule and the WAF stop them first.
+# about to reject: the host rule stops them first. No WAF rules here (see iap_deny_rules).
 resource "google_compute_security_policy" "iap" {
   count = local.iap_enabled ? 1 : 0
 
   name        = local.names.iap_policy
-  description = "WordPress behind IAP: blocks unknown hosts, limits login attempts, preconfigured WAF rules"
+  description = "WordPress behind IAP: blocks unknown hosts, limits login attempts"
   type        = "CLOUD_ARMOR"
 
   dynamic "rule" {
