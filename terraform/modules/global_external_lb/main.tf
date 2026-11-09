@@ -44,8 +44,14 @@ locals {
 
   # Regular expression for the Host header of the site's domains, used by Cloud Armor. A dot is
   # written "[.]" so it only matches a dot. The port is optional: a client may send it in the
-  # header (www.example.com:443).
-  allowed_hosts_regex = "^(${join("|", [for domain in var.domain_names : replace(domain, ".", "[.]")])})(:[0-9]+)?$"
+  # header (www.example.com:443). Cloud Armor rejects capture groups, so each domain is written
+  # twice, with and without a port, instead of ^(a|b)(:[0-9]+)?$.
+  allowed_hosts_regex = join("|", flatten([
+    for domain in var.domain_names : [
+      "^${replace(domain, ".", "[.]")}$",
+      "^${replace(domain, ".", "[.]")}:[0-9]+$",
+    ]
+  ]))
 
   # Google front end ranges. With a global external Application Load Balancer both the
   # health check probes and the proxied client traffic reach the backends from these ranges.
@@ -394,15 +400,19 @@ locals {
   # same files. Such a request matches no protected path rule, goes to the public backend and would
   # skip IAP. On the public backend, this rule blocks any path that contains a protected path, after
   # decoding and lowercasing it as Cloud Armor recommends, except the exact public paths:
-  #   /wp-admin/*                 ->  /wp-admin(/|$)                    anywhere in the path
+  #   /wp-admin/*                 ->  /wp-admin/ or /wp-admin$          anywhere in the path
   #   /wp-login.php               ->  /wp-login[.]php                   anywhere in the path
   #   /wp-admin/admin-ajax.php    ->  ^/+wp-admin/+admin-ajax[.]php$    the whole path
-  protected_paths_regex = join("|", [
+  # Cloud Armor rejects capture groups, so a prefix is two alternatives instead of /wp-admin(/|$).
+  protected_paths_regex = join("|", flatten([
     for path in var.iap_protected_paths :
     endswith(path, "/*")
-    ? "${replace(lower(trimsuffix(path, "/*")), ".", "[.]")}(/|$)"
-    : replace(lower(path), ".", "[.]")
-  ])
+    ? [
+      "${replace(lower(trimsuffix(path, "/*")), ".", "[.]")}/",
+      "${replace(lower(trimsuffix(path, "/*")), ".", "[.]")}$",
+    ]
+    : [replace(lower(path), ".", "[.]")]
+  ]))
   public_paths_regex = join("|", [
     for path in var.iap_public_paths : "^${replace(replace(lower(path), ".", "[.]"), "/", "/+")}$"
   ])

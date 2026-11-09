@@ -195,6 +195,7 @@ grant_roles "${APPLY_SA}" \
   roles/secretmanager.admin \
   roles/cloudscheduler.admin \
   roles/monitoring.editor \
+  roles/logging.configWriter \
   roles/servicenetworking.networksAdmin \
   roles/logging.logWriter \
   roles/iam.roleAdmin \
@@ -211,6 +212,8 @@ grant_roles "${APPLY_SA}" \
 #   secretmanager.admin     - WordPress secrets
 #   cloudscheduler.admin    - backup job
 #   monitoring.editor       - uptime check, alert policies, notification channel, dashboard
+#   logging.configWriter    - the notification rule Cloud Logging creates for a log-based alert
+#                             (logging.notificationRules.create), which monitoring.editor lacks
 #   networksAdmin           - Private Service Access (Cloud SQL private IP)
 #   logging.logWriter       - build logs (CLOUD_LOGGING_ONLY)
 #   iam.roleAdmin           - custom role of the backup function

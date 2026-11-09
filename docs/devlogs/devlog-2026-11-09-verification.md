@@ -132,3 +132,51 @@ Build 'wp-blueprint-web.googlecompute.wordpress' errored after 3 minutes 31 seco
 The other 16 files, WordPress 7.1.3 included, still match. The new packs hold the expected file types (`.po`, `.mo`, `.json`, `.l10n.php`). The check did its job: the build stopped on files that differ from the ones reviewed. The README describes this case in *Update the WordPress image*.
 
 **Fix.** `bash packer/scripts/update-checksums.sh`, which checks WordPress against its official SHA1 and rewrites `checksums.sha256`. The diff changes only those four lines, and the new values match an independent download of each file.
+
+### E3 — The apply cannot create the log-based alert
+
+Step 8, the first apply:
+
+```text
+Error: Error creating AlertPolicy: googleapi: Error 403: projects/gcp-wordpress-test-v2 -> Permission 'logging.notificationRules.create' denied on resource '//logging.googleapis.com/projects/gcp-wordpress-test-v2/locations/global' (or it may not exist).
+
+  with google_monitoring_alert_policy.export_failure,
+  on monitoring.tf line 134, in resource "google_monitoring_alert_policy" "export_failure":
+```
+
+**Cause.** An alert policy with `condition_matched_log` is not only a Monitoring resource: Cloud Logging creates a notification rule for it, which needs `logging.notificationRules.create` ([Configure log-based alerting policies](https://docs.cloud.google.com/logging/docs/alerting/log-based-alerts)). `roles/monitoring.editor`, granted to `terraform-apply-sa` for T18, does not include it; `roles/logging.admin` and `roles/logging.configWriter` do ([Cloud Logging roles](https://docs.cloud.google.com/iam/docs/roles-permissions/logging)). The other alert policies, based on metrics, do not need it.
+
+**Fix.** `configs/setup.sh` grants `roles/logging.configWriter` to `terraform-apply-sa`, the smaller of the two. In this project, where `setup.sh` had already run, the binding is added by hand:
+
+```bash
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:terraform-apply-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/logging.configWriter"
+```
+
+### E4 — Cloud Armor rejects capture groups in the rule expressions
+
+Step 8, the same apply, for both security policies (the domain is replaced by `<domain>`):
+
+```text
+Error: Error creating SecurityPolicy: googleapi: Error 400: Invalid value for field 'resource.rules[1].match.expr': 'request.path.urlDecodeUni().lower().matches('/wp-admin|/wp-admin(/|$)|/wp-login[.]php') && !request.path.urlDecodeUni().lower().matches('^/+wp-admin/+admin-ajax[.]php$')'. Failed with error: generic::invalid_argument: invalid regular expression: /wp-admin|/wp-admin(/|$)|/wp-login[.]php, generic::invalid_argument: capture groups are not allowed while parsing Cloud Armor rule matcher expression: ...
+
+  with module.global_external_lb.google_compute_security_policy.wordpress,
+  on modules/global_external_lb/main.tf line 454, in resource "google_compute_security_policy" "wordpress":
+
+Error: Error creating SecurityPolicy: googleapi: Error 400: Invalid value for field 'resource.rules[13].match.expr': '!has(request.headers['host']) || !request.headers['host'].lower().matches('^(<domain>)(:[0-9]+)?$')'. Failed with error: generic::invalid_argument: invalid regular expression: ^(<domain>)(:[0-9]+)?$, generic::invalid_argument: capture groups are not allowed while parsing Cloud Armor rule matcher expression: ...
+
+  with module.global_external_lb.google_compute_security_policy.iap[0],
+  on modules/global_external_lb/main.tf line 519, in resource "google_compute_security_policy" "iap":
+```
+
+**Cause.** The module built two regular expressions with groups: the allowed hosts of rule 50 (`^(a|b)(:[0-9]+)?$`) and the protected paths of rule 150 (`/wp-admin(/|$)`). RE2 accepts them, but Cloud Armor's rule parser rejects capture groups. The [rules language reference](https://docs.cloud.google.com/armor/docs/rules-language-reference) does not say so; only the API does, so `terraform validate` and the plan passed. The 15 path variants of R30 had been checked against the expression with a regular expression engine, not against Cloud Armor.
+
+**Fix.** Both expressions are generated without groups, by expanding the alternatives:
+
+| Rule | Before | After |
+|---|---|---|
+| 50, hosts | `^(a[.]com\|b[.]com)(:[0-9]+)?$` | `^a[.]com$\|^a[.]com:[0-9]+$\|^b[.]com$\|^b[.]com:[0-9]+$` |
+| 150, paths | `/wp-admin\|/wp-admin(/\|$)\|/wp-login[.]php` | `/wp-admin\|/wp-admin/\|/wp-admin$\|/wp-login[.]php` |
+
+The new expressions were generated with the module's own Terraform code and compared with the old ones on 27 cases (valid and invalid hosts, with and without a port; the path variants of the smoke tests and public paths): no difference. The apply that confirms Cloud Armor accepts them is the next one.
