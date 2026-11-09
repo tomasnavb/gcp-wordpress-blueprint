@@ -1,19 +1,21 @@
+# Every step image is pinned to an exact tag and its digest: a floating tag (":slim", "alpine")
+# changes under the build without a commit. To upgrade, change the tag and the digest together in a PR.
 steps:
   # Verify Terraform version
   - id: "verify-terraform-version"
-    name: "hashicorp/terraform:1.15.7"
+    name: "hashicorp/terraform:1.15.7@sha256:40e61a86763083ea987ded0ffa15f6d75e0df48ed16275811f949b3ecbcd8aae"
     args: ["version"]
 
   # Create tmp directory required by archive_file data source (Cloud Function zip)
   - id: "create-tmp"
-    name: "alpine"
+    name: "alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     dir: "terraform"
     entrypoint: "sh"
     args: ["-c", "mkdir -p tmp"]
 
   # Initialize Terraform
   - id: "terraform-init"
-    name: "hashicorp/terraform:1.15.7"
+    name: "hashicorp/terraform:1.15.7@sha256:40e61a86763083ea987ded0ffa15f6d75e0df48ed16275811f949b3ecbcd8aae"
     dir: "terraform"
     args:
       - "init"
@@ -23,7 +25,7 @@ steps:
 
   # Check Terraform formatting
   - id: "terraform-fmt-check"
-    name: "hashicorp/terraform:1.15.7"
+    name: "hashicorp/terraform:1.15.7@sha256:40e61a86763083ea987ded0ffa15f6d75e0df48ed16275811f949b3ecbcd8aae"
     dir: "terraform"
     args:
       - "fmt"
@@ -33,7 +35,7 @@ steps:
 
   # Validate Terraform configuration
   - id: "terraform-validate"
-    name: "hashicorp/terraform:1.15.7"
+    name: "hashicorp/terraform:1.15.7@sha256:40e61a86763083ea987ded0ffa15f6d75e0df48ed16275811f949b3ecbcd8aae"
     dir: "terraform"
     args:
       - "validate"
@@ -41,7 +43,7 @@ steps:
 
   # Generate Terraform plan
   - id: "terraform-plan"
-    name: "hashicorp/terraform:1.15.7"
+    name: "hashicorp/terraform:1.15.7@sha256:40e61a86763083ea987ded0ffa15f6d75e0df48ed16275811f949b3ecbcd8aae"
     dir: "terraform"
     args:
       - "plan"
@@ -55,7 +57,7 @@ steps:
 
   # Convert Terraform plan to text and JSON format for easier analysis and artifact storage
   - id: "plan-to-text"
-    name: "hashicorp/terraform:1.15.7"
+    name: "hashicorp/terraform:1.15.7@sha256:40e61a86763083ea987ded0ffa15f6d75e0df48ed16275811f949b3ecbcd8aae"
     dir: "terraform"
     entrypoint: "sh"
     args:
@@ -68,7 +70,7 @@ steps:
   # List destructive changes in the plan. Report only: this step never fails the build.
   # The apply pipeline runs the same script in enforce mode. See scripts/check_destructive.py for details.
   - id: "report-destructive-changes"
-    name: "python:3.12-alpine"
+    name: "python:3.12.15-alpine3.24@sha256:b658b05ce9c4eb97ec6fc19424818a1f31993659c2b505a532f470e83807815d"
     entrypoint: "python"
     args:
       - "/workspace/cloudbuild/scripts/check_destructive.py"
@@ -78,7 +80,7 @@ steps:
   # Upload the plan artifacts so the apply pipeline can use them.
   # Skipped when _SAVE_PLAN is not "true": pull request plans are for review only and cannot be applied.
   - id: "upload-plan-artifacts"
-    name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    name: "gcr.io/google.com/cloudsdktool/cloud-sdk:592.0.0-slim@sha256:08c9cb2c82625689f26172f46f2cefdf30c3449959a71492569a824b537d369f"
     dir: "terraform"
     entrypoint: "sh"
     args:

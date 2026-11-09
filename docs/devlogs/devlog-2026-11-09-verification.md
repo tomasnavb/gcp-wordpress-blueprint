@@ -88,4 +88,23 @@ Result values: `pending`, `done`, `failed`, `skipped`. When a check passes, the 
 
 ## Errors found
 
-None yet.
+### E1 — The image build cannot unzip Packer: python3 not found
+
+Step 6, `gcloud builds submit` of `cloudbuild/packer.yaml` (check A5):
+
+```text
+Step #0 - "install-packer": Status: Downloaded newer image for gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+Step #0 - "install-packer": gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+Step #0 - "install-packer": /tmp/packer.zip: OK
+Step #0 - "install-packer": sh: 5: python3: not found
+Finished Step #0 - "install-packer"
+ERROR
+ERROR: build step 0 "gcr.io/google.com/cloudsdktool/cloud-sdk:slim" failed: step exited with non-zero status: 127
+```
+
+**Cause.** The step ran in `cloud-sdk:slim`, a floating tag that always points to the latest gcloud CLI. On this day it resolved to `592.0.0-slim` (`sha256:08c9cb2c…`, published 2026-11-03), which no longer includes `python3`, and the step unzipped Packer with `python3 -m zipfile`. The Packer download and its checksum were fine (`/tmp/packer.zip: OK`). Nothing was created in the project: the build stopped at step 0. No release note of the gcloud CLI announcing the change was found.
+
+**Fix.**
+
+- The step downloads, verifies and unzips Packer in Alpine, whose busybox has `wget`, `sha256sum` and `unzip`. Packer still runs in the gcloud image, which it needs for the IAP tunnel.
+- Every step image of the three pipelines is pinned to an exact tag and its digest, checked against each registry: `cloud-sdk:592.0.0-slim`, `alpine:3.24.3`, `python:3.12.15-alpine3.24`, `hashicorp/terraform:1.15.7`. Before, `cloud-sdk:slim` and `alpine` floated, and `python:3.12-alpine` fixed only the minor version, against the rule that nothing used to build or deploy is unpinned. An image upgrade is now a change of tag and digest in a pull request.

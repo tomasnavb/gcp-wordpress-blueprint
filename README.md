@@ -380,7 +380,7 @@ gcp-wordpress-blueprint/
     --role="roles/orgpolicy.policyAdmin"
   ```
 
-The CI/CD pipeline runs entirely on **Cloud Build** with pinned versions (Terraform 1.15.7, Packer 1.16.1) — Terraform and Packer are not required locally to deploy.
+The CI/CD pipeline runs entirely on **Cloud Build** with pinned versions (Terraform 1.15.7, Packer 1.16.1) — Terraform and Packer are not required locally to deploy. Every build step image is pinned to an exact tag and its digest (`cloud-sdk:592.0.0-slim`, `alpine:3.24.3`, `python:3.12.15-alpine3.24`, `hashicorp/terraform:1.15.7`): a floating tag such as `:slim` changes under the build without a commit, as it did on 2026-11-09, when the gcloud image dropped `python3`. An upgrade changes the tag and the digest together, in a pull request.
 
 ---
 
