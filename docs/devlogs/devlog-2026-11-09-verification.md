@@ -108,3 +108,27 @@ ERROR: build step 0 "gcr.io/google.com/cloudsdktool/cloud-sdk:slim" failed: step
 
 - The step downloads, verifies and unzips Packer in Alpine, whose busybox has `wget`, `sha256sum` and `unzip`. Packer still runs in the gcloud image, which it needs for the IAP tunnel.
 - Every step image of the three pipelines is pinned to an exact tag and its digest, checked against each registry: `cloud-sdk:592.0.0-slim`, `alpine:3.24.3`, `python:3.12.15-alpine3.24`, `hashicorp/terraform:1.15.7`. Before, `cloud-sdk:slim` and `alpine` floated, and `python:3.12-alpine` fixed only the minor version, against the rule that nothing used to build or deploy is unpinned. An image upgrade is now a change of tag and digest in a pull request.
+
+### E2 — Four language packs no longer match their checksums
+
+Step 6, second image build, after E1 was fixed. The Ops Agent block passed (`mod_status` loaded, `/server-status` answering); the build stopped at the checksum check of the WordPress downloads:
+
+```text
+==> wp-blueprint-web.googlecompute.wordpress: + cd /tmp/downloads
+==> wp-blueprint-web.googlecompute.wordpress: + sha256sum --strict -c /tmp/checksums.sha256
+...
+Build 'wp-blueprint-web.googlecompute.wordpress' errored after 3 minutes 31 seconds: Script exited with non-zero exit status: 1. Allowed exit codes are: [0]
+```
+
+**Cause.** WordPress.org rebuilt four core language packs of 7.1.3 after their checksums were committed (`0dd8a7c`, 2026-10-28 13:57 UTC), without a new version. The `updated` field of the translations API (`https://api.wordpress.org/translations/core/1.0/?version=7.1.3`):
+
+| File | Rebuilt (UTC) |
+|---|---|
+| `wordpress-7.1.3-de_DE.zip` | 2026-10-28 15:30 |
+| `wordpress-7.1.3-nl_NL.zip` | 2026-10-28 15:27 |
+| `wordpress-7.1.3-pl_PL.zip` | 2026-10-28 15:10 |
+| `wordpress-7.1.3-ru_RU.zip` | 2026-10-28 17:45 |
+
+The other 16 files, WordPress 7.1.3 included, still match. The new packs hold the expected file types (`.po`, `.mo`, `.json`, `.l10n.php`). The check did its job: the build stopped on files that differ from the ones reviewed. The README describes this case in *Update the WordPress image*.
+
+**Fix.** `bash packer/scripts/update-checksums.sh`, which checks WordPress against its official SHA1 and rewrites `checksums.sha256`. The diff changes only those four lines, and the new values match an independent download of each file.
