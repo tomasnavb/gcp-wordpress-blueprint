@@ -105,6 +105,27 @@ expect_wordpress() {
   fi
 }
 
+# Passes for a path with dot segments (/./ or /../) when Cloud Armor or IAP answered, or when the
+# load balancer redirected to the same URL with the path normalized: Google's front end answers
+# those itself, before any backend, and the redirect target must then lead to the IAP sign-in
+# (devlog-2026-11-09-verification.md, E7).
+expect_blocked_or_normalized() {
+  local name="$1" normalized_path="$2" got="$3"
+  local status="${got%% *}" location="${got#* }"
+  if [[ "$status" == "302" || "$status" == "301" ]] && [[ "$location" == "https://${DOMAIN}${normalized_path}" ]]; then
+    local target
+    target=$(request https "$normalized_path")
+    local target_status="${target%% *}" target_location="${target#* }"
+    if [[ "$target_status" == "401" ]] || [[ "$target_status" == "302" && "$target_location" == https://accounts.google.com/* ]]; then
+      report PASS "$name (normalized by the load balancer, target behind IAP)" "$status ${normalized_path}"
+    else
+      report FAIL "$name (normalized to ${normalized_path}, which is not behind IAP)" "$target"
+    fi
+  else
+    expect_blocked "$name" "$got"
+  fi
+}
+
 # Passes when the answer is the IAP sign-in: a redirect to accounts.google.com, or a 401.
 expect_iap() {
   local name="$1" got="$2"
@@ -144,10 +165,10 @@ echo ""
 echo "--- Path variants that would skip the IAP path rules (Cloud Armor, Block protected paths outside IAP)"
 expect_blocked "/wp-login.php/x" "$(request https /wp-login.php/x)"
 expect_blocked "//wp-admin/install.php" "$(request https //wp-admin/install.php --path-as-is)"
-expect_blocked "/./wp-admin/" "$(request https /./wp-admin/ --path-as-is)"
+expect_blocked_or_normalized "/./wp-admin/" "/wp-admin/" "$(request https /./wp-admin/ --path-as-is)"
 expect_blocked "/wp-%61dmin/ (encoded a)" "$(request https /wp-%61dmin/)"
 expect_blocked "/WP-LOGIN.PHP" "$(request https /WP-LOGIN.PHP)"
-expect_blocked "/wp-admin/admin-ajax.php/../install.php" "$(request https /wp-admin/admin-ajax.php/../install.php --path-as-is)"
+expect_blocked_or_normalized "/wp-admin/admin-ajax.php/../install.php" "/wp-admin/install.php"   "$(request https /wp-admin/admin-ajax.php/../install.php --path-as-is)"
 
 echo ""
 echo "--- Public paths"
@@ -169,7 +190,8 @@ fi
 echo ""
 echo "--- HTTP"
 got=$(request http /)
-if [[ "${got%% *}" == "301" && "${got#* }" == https://${DOMAIN}/* ]]; then
+# The load balancer writes the default port in the redirect (https://<domain>:443/): the same URL.
+if [[ "${got%% *}" == "301" ]]   && [[ "${got#* }" == https://${DOMAIN}/* || "${got#* }" == https://${DOMAIN}:443/* ]]; then
   report PASS "HTTP redirects to HTTPS" "$got"
 else
   report FAIL "HTTP redirects to HTTPS (expected 301 to https://${DOMAIN}/)" "$got"

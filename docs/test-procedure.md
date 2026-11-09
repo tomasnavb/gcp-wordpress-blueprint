@@ -57,13 +57,14 @@ Expected results:
 | `Host:` another domain | 403 | Cloud Armor, "Block unknown hosts" |
 | `Host:` the site's domain, `/` | 200; before the installation, 302 to `/wp-admin/install.php`, which WordPress sends for any request until it is installed | WordPress |
 | `/wp-admin/`, `/wp-admin`, `/wp-admin/install.php`, `/wp-login.php` | The IAP sign-in: 302 to `accounts.google.com`, or 401 | IAP |
-| `/wp-login.php/x`, `//wp-admin/install.php`, `/./wp-admin/`, `/wp-%61dmin/`, `/WP-LOGIN.PHP`, `/wp-admin/admin-ajax.php/../install.php` | 403, or the IAP sign-in | Cloud Armor, "Block protected paths outside IAP", or IAP if the load balancer normalized the path first |
+| `/wp-login.php/x`, `//wp-admin/install.php`, `/wp-%61dmin/`, `/WP-LOGIN.PHP` | 403, or the IAP sign-in | Cloud Armor, "Block protected paths outside IAP", or IAP if the load balancer normalized the path first |
+| `/./wp-admin/`, `/wp-admin/admin-ajax.php/../install.php` | 302 to the same URL with the path normalized (`/wp-admin/`, `/wp-admin/install.php`), whose target must lead to the IAP sign-in; or 403, or the IAP sign-in | Google's front end: it answers paths with dot segments itself, before any backend. The script follows the redirect and checks the target is behind IAP |
 | `/wp-admin/admin-ajax.php` | 400 with the body `0`, which WordPress answers when no `action` is given; before the installation, 302 to `/wp-admin/install.php` | WordPress, without IAP: neither Cloud Armor nor IAP answers like that |
 | `/health.php` | 200 | WordPress |
 | `/xmlrpc.php` | 403 | Cloud Armor, "Block xmlrpc.php" |
 | `/server-status` | 403 | Apache: `mod_status`, which the Ops Agent reads from the instance itself, only answers requests from the VM (`Require local`) |
 | An upload | 200 | Backend bucket |
-| `http://` | 301 to `https://` | HTTP redirect URL map |
+| `http://` | 301 to `https://<domain>/`, or `https://<domain>:443/`, the same URL with the default port written | HTTP redirect URL map |
 
 The script prints `PASS` or `FAIL` per check, with the status and the `Location` header it got, and exits with 1 if any check fails. A `FAIL` with status `200` on an admin or login path means WordPress was reached without IAP: stop and review the URL map and the Cloud Armor rules before using the site.
 

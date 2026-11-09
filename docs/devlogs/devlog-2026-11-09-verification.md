@@ -235,3 +235,25 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:terraform-apply-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/iap.admin"
 ```
+
+### E7 — Three smoke test failures that are expectations of the test, not gaps
+
+Smoke tests after the installation (check B6). Every edge check passed except three (the domain is replaced by `<domain>`):
+
+```text
+FAIL  /./wp-admin/ (expected 403, 401 or the IAP sign-in)         302 https://<domain>/wp-admin/
+FAIL  /wp-admin/admin-ajax.php/../install.php (expected 403, 401 or the IAP sign-in)  302 https://<domain>/wp-admin/install.php
+FAIL  HTTP redirects to HTTPS (expected 301 to https://<domain>/)  301 https://<domain>:443/
+```
+
+**Cause.** Google's front end normalizes paths with dot segments (`/./`, `/../`) and answers them itself, with a redirect to the same URL with the path normalized, before any backend. Two independent checks confirm the requests never reached WordPress:
+
+| Check | `/./wp-admin/` | `/health.php` (answered by Apache) |
+|---|---|---|
+| `server` header | absent | `Apache/2.4.68 (Debian)` |
+| `via: 1.1 google` header | absent: no backend involved | present |
+| Apache access log on both instances | not found | — |
+
+The load balancer request logs had no entry for them either. A browser that follows the redirect lands on `/wp-admin/` or `/wp-admin/install.php`, which go through IAP. The third failure is the HTTP redirect writing the default port, `https://<domain>:443/`: the same URL.
+
+**Fix.** The smoke test accepts, for the two paths with dot segments, a redirect to the normalized path, and then requests that path and requires the IAP sign-in: accepting the redirect alone would not prove the target is protected. The HTTP check accepts `https://<domain>/` and `https://<domain>:443/`. `docs/test-procedure.md` lists who answers each case. The new function was checked offline with stubbed responses: it passes when the target is behind IAP and fails when it is not, or when the redirect goes elsewhere.
