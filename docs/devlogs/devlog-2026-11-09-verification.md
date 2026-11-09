@@ -58,7 +58,7 @@ Result values: `pending`, `done`, `failed`, `skipped`. When a check passes, the 
 | D3 | Metrics Explorer shows `workload.googleapis.com/apache.requests` and `agent.googleapis.com/memory/percent_used` for both instances | T18 | `pending` |
 | D4 | Only the Apache error log in Cloud Logging (`log_id("apache_error")`), no `apache_access` | T18 | `pending` |
 | D5 | Before the installation the uptime check fails (content match), and passes from every region after it. The content match `wp-content/themes` is experimental: with the site up, `curl -s https://<domain>/` and pick a string that WordPress prints on the home page whatever the theme and that neither the installer nor the IAP sign-in contains (a candidate: the REST API link, `https://api.w.org/`), then replace it in `monitoring.tf` | T18 | `pending` |
-| D6 | The email channel receives the verification email or a test notification | T18 | `pending` |
+| D6 | The uptime alert email reaches `IAP_USER_EMAIL` while the site is not installed (D5). Email channels need no verification | T18 | `pending` |
 | D7 | The uptime alert fires during the failover (C5) if the downtime passes two minutes, or with the instances stopped, and closes when the site is back | T18 | `pending` |
 | D8 | The export alert targets the right entries: in Logs Explorer, its filter without the severity and status conditions matches the scheduler job and function request entries of the export run of C4. A real failure is not forced: it would need breaking the function | T18, T37 | `pending` |
 | D9 | The dashboard `wp-blueprint-dashboard-prod` shows data in every chart | T18 | `pending` |

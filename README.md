@@ -609,6 +609,8 @@ gcloud compute ssl-certificates describe SSL_CERTIFICATE_NAME \
 | `ACTIVE` | Issued. The site is available at the URLs in `site_urls` |
 | `FAILED_NOT_VISIBLE` | Google does not see the DNS record pointing to the load balancer IP |
 
+Until the certificate is `ACTIVE` and WordPress is installed, the uptime check fails and the uptime alert emails `IAP_USER_EMAIL` (see [Monitoring and Alerting](#monitoring-and-alerting)); it closes by itself once the home page answers.
+
 **Install WordPress through IAP.** Once the certificate is `ACTIVE`, open `https://<domain>/` signed in with the Google account of `IAP_USER_EMAIL`. A fresh site redirects to `/wp-admin/install.php`, which is behind IAP: any other account gets IAP's access denied page, so nobody else can complete the installer. Complete it with an admin username other than `admin` and a strong password. The installer is in English, because `DISALLOW_FILE_MODS` turns off its language chooser; choose the site language afterwards in *Settings → General → Site Language*, which lists the ten languages in the image.
 
 **Run the smoke tests** with the `load_balancer_ip` output. The script only sends HTTP requests and changes nothing; it exits with 1 if any check fails:
@@ -617,7 +619,7 @@ gcloud compute ssl-certificates describe SSL_CERTIFICATE_NAME \
 bash tests/smoke/edge-security.sh <domain> <load_balancer_ip>
 ```
 
-It checks that unknown hosts get a 403, that the admin area and the login lead to the IAP sign-in, that path variants which would skip IAP are blocked, that `admin-ajax.php` is still public, and that HTTP redirects to HTTPS. The expected result of each request, and the manual checks that need a browser, are in [docs/test-procedure.md](docs/test-procedure.md).
+It checks that unknown hosts get a 403, that the admin area and the login lead to the IAP sign-in, that path variants which would skip IAP are blocked, that `admin-ajax.php` is still public, that `/server-status` answers 403, and that HTTP redirects to HTTPS. The expected result of each request, and the manual checks that need a browser, are in [docs/test-procedure.md](docs/test-procedure.md).
 
 #### Step 9 (optional): Delete the default network
 
