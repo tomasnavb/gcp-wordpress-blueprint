@@ -4,6 +4,8 @@ Checklist of the deploy from scratch that verifies the refactor (task R22 in [..
 
 How each test is run is in [../test-procedure.md](../test-procedure.md); this file records what this run found.
 
+The checks left `pending` here were run in the next deploy from scratch, with the fixes of E1 to E7: see [devlog-2026-11-11-verification.md](devlog-2026-11-11-verification.md).
+
 Result values: `pending`, `done`, `failed`, `skipped`. When a check passes, the matching task in the to-do is set to `done`.
 
 ## Phase A — Bootstrap and first deploy

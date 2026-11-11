@@ -108,7 +108,7 @@ Expected results:
 | Check | Expected |
 |---|---|
 | Failover operation | `DONE`, without an error |
-| Downtime | About a minute or less: Google states about 60 seconds for a failover. Each failed request is printed with its time and status |
+| Downtime | Google states about 60 seconds for a failover; measured 10.6 s and 20.9 s on 2026-11-11. Each failed request is printed with its time and status: `500` is WordPress failing to connect to the database, `000` a request with no answer within the 3 s timeout, while WordPress waits on a connection to the old primary |
 | Primary zone | Changed to the zone the standby was in |
 | Private IP | The same as before: the instances reconnect without any change |
 | Site | Answering again, ten requests in a row |

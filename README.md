@@ -5,7 +5,7 @@
 ![Google Provider](https://img.shields.io/badge/Google_Provider-7.25.0-4285F4?logo=google-cloud&logoColor=white)
 ![IaC](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform&logoColor=white)
 
-> **Refactor complete in the code; the verification deploy is pending.** The project was refactored towards a production-ready setup: a naming convention for every resource, the management VPC removed, a dedicated subnet for the image build, one service account per pipeline job, an edge layer with Cloud Armor, Cloud CDN and a backend bucket for uploads, and the admin area behind Identity-Aware Proxy, added after a bot took over the installer of the first verification deploy. A deploy from scratch confirms it (task R22 in [docs/to-do.md](docs/to-do.md)). The screenshots are from the deploy before the refactor and still show the old resource names.
+> **Verified in a deploy from scratch on 2026-11-11.** The project was refactored towards a production-ready setup: a naming convention for every resource, the management VPC removed, a dedicated subnet for the image build, one service account per pipeline job, an edge layer with Cloud Armor, Cloud CDN and a backend bucket for uploads, the admin area behind Identity-Aware Proxy, added after a bot took over the installer of an earlier deploy, and monitoring. What was checked, and the errors found and fixed on the way, are in [docs/devlogs/devlog-2026-11-11-verification.md](docs/devlogs/devlog-2026-11-11-verification.md); the screenshots are from that deploy.
 
 **Terraform, Packer and Cloud Build code that deploys WordPress into a Google Cloud project of your own: an auto-healing managed instance group behind a global HTTPS load balancer with Cloud Armor and Cloud CDN, the admin area behind Identity-Aware Proxy, Cloud SQL on a private IP, scheduled backups and credentials in Secret Manager.** Infrastructure changes go through pull requests: plan on every PR, apply of the plan generated on `main` by a manual, approved trigger.
 
@@ -284,10 +284,10 @@ The other three values (database name, user and host) are not sensitive and are 
 | Compute Engine (Regional MIG) | Auto-healing WordPress instances across 3 zones |
 | Cloud SQL (MySQL 8.4) | Managed relational database, regional (high availability), private IP only, point-in-time recovery |
 | Cloud Load Balancing | Global External Application LB: HTTPS with a Google-managed certificate, HTTP to HTTPS redirect, TLS 1.2 minimum, uploads routed to a backend bucket |
-| Cloud Armor | Security policy on the backend service: `xmlrpc.php` blocked, login rate limit and ban, OWASP CRS 4.22 WAF rules |
+| Cloud Armor | One security policy per backend service: unknown hosts rejected, `xmlrpc.php` blocked, protected paths blocked outside IAP, login rate limit and ban, OWASP CRS 4.22 WAF rules on the public backend |
 | Cloud CDN | Caching of uploads and of static assets served by the instances |
 | Cloud NAT + Cloud Router | Outbound internet access without public IPs |
-| Identity-Aware Proxy | SSH to the WordPress instances and to the Packer build VM, neither of which has a public IP |
+| Identity-Aware Proxy | The WordPress admin area and login, for the operator's Google account; SSH to the WordPress instances and to the Packer build VM, neither of which has a public IP |
 | Private Service Access | Private connection between the VPC and Cloud SQL |
 | Secret Manager | Database credentials storage and access |
 | Cloud Functions v2 | Serverless backup orchestration |
@@ -306,7 +306,7 @@ gcp-wordpress-blueprint/
 ├── docs/
 │   ├── architecture-v2.png          # Architecture diagram
 │   ├── to-do.md                     # Pending tasks and their status
-│   ├── test-procedure.md            # How a deploy is tested: static checks, smoke tests, manual checks
+│   ├── test-procedure.md            # How a deploy is tested: static checks, smoke tests, manual checks, resilience
 │   ├── devlogs/                     # Problems found, their causes, fixes and design decisions, by date
 │   └── screenshots/                 # Images used in the Screenshots section
 │
@@ -332,8 +332,10 @@ gcp-wordpress-blueprint/
 │       └── update-checksums.sh      # Regenerates checksums.sha256 after a version change, checking the official SHA1
 │
 ├── tests/
-│   └── smoke/
-│       └── edge-security.sh         # Read-only checks of a deployed site: hosts, IAP, Cloud Armor, HTTPS
+│   ├── smoke/
+│   │   └── edge-security.sh         # Read-only checks of a deployed site: hosts, IAP, Cloud Armor, HTTPS
+│   └── resilience/
+│       └── sql-failover.sh          # Cloud SQL failover, with the site downtime measured (changes the project)
 │
 └── terraform/
     ├── main.tf                      # Providers, backend (GCS, bucket via -backend-config)
@@ -372,6 +374,7 @@ gcp-wordpress-blueprint/
 - A GitHub account with this repository forked or cloned
 - A domain name whose DNS records you control (the managed certificate is issued for it)
 - The project in a Google Cloud organization, and `IAP_USER_EMAIL` an account of that organization. IAP protects the admin area with the Google-managed OAuth client, which only admits users of the project's organization; a personal account outside it gets IAP's access denied page. A project without an organization would need a custom OAuth client, which this project does not configure
+- A mailbox for `IAP_USER_EMAIL`, which also receives the monitoring alerts (see [Monitoring and Alerting](#monitoring-and-alerting)). A Google identity of the organization without email still signs in through IAP, but its alerts are only visible in the console
 - [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (preinstalled in Cloud Shell)
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.15.7, only for the [Destroy](#destroy), which runs outside the pipeline. Check `terraform version` in Cloud Shell before using it
 - Only if the project is in an organization that enforces domain restricted sharing: `roles/orgpolicy.policyAdmin` on the organization, for [Step 5b](#step-5b-organization-policy-exception-only-if-the-project-is-in-an-organization). Owning the organization is not enough; grant it explicitly:
@@ -720,6 +723,14 @@ gcloud compute addresses delete wp-blueprint-lb-ip-prod \
   --global
 ```
 
+`terraform destroy` removes only what Terraform created. What `configs/setup.sh` created stays: the Cloud Build triggers, the pipeline service accounts and the state bucket. The triggers keep firing on every push to the repository, and an image build or a plan then fails or plans a full deploy. To remove everything after a test deploy, delete the project:
+
+```bash
+gcloud projects delete $PROJECT_ID
+```
+
+To keep the project instead, disable the triggers in *Cloud Build → Triggers*.
+
 > **Portfolio note:** `deletion_protection` and `prevent_destroy` are set to `false` in this project to allow easy teardown during testing. In a production environment both should be set to `true` in [terraform/database.tf](terraform/database.tf).
 
 ---
@@ -828,7 +839,7 @@ This is not a zero-downtime rotation: between the moment the password changes in
 ### Update the WordPress image
 
 1. Modify provisioning scripts in `packer/scripts/`
-2. Merge to `main` — the image build trigger fires automatically and registers a new image under the `wp-blueprint-web` family (about 5 minutes; 4 min 22 s measured on 2026-10-11)
+2. Merge to `main` — the image build trigger fires automatically and registers a new image under the `wp-blueprint-web` family (about 8 minutes; 8 min 18 s measured on 2026-11-11)
 3. When the build has finished, generate a plan. A change in `packer/**` alone does not trigger one:
 
    ```bash
@@ -909,7 +920,7 @@ Each entry has the rule that matched (`previewSecurityPolicy.priority`) and the 
 - Only the site's own domains are served: any other `Host` header gets a 403, and WordPress takes its address from configuration, never from the request
 - Cloud Armor in front of the instances: `xmlrpc.php` blocked, login attempts rate limited and banned per IP, OWASP CRS 4.22 WAF rules (in preview until reviewed)
 - Application passwords disabled, so the REST API cannot be authenticated around IAP
-- WordPress and its language packs downloaded at pinned versions and checked against committed SHA256 values before they are extracted; Packer, Terraform and the Packer plugin pinned too
+- WordPress and its language packs downloaded at pinned versions and checked against committed SHA256 values before they are extracted; gcsfuse and the Ops Agent pinned, from Google's signed apt repository; Packer, Terraform and the Packer plugin pinned too, and every CI step image pinned by tag and digest
 - Backends accept traffic only from the Google front end ranges, not from the internet
 - The uploads bucket is private: its objects are read only through the load balancer (Private Bucket Access), and public access prevention stays enforced
 - Cloud SQL is accessible only via private IP within the VPC, and the build VM is denied any traffic to its range
