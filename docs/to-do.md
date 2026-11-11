@@ -28,7 +28,6 @@ Applies the naming convention of the architecture style guide (`[project]-[compo
 | ID | Task | Created | Status | Detail |
 |---|---|---|---|---|
 | R13 | Build firewall rules: SSH through IAP only to the tag `packer-build`, and egress from the build subnet to the Private Service Access range denied, so the build VM cannot reach Cloud SQL. Packer uses that tag instead of `iap-ssh-access`, which the web instances keep | 2026-10-16 | `unverified` | Naming review of 2026-10-16; Verification 11-11: IAP SSH to the `packer-build` tag confirmed (6.2); the denied egress to the Private Service Access range not tested |
-| R16 | `configs/destroy.sh` with the new bucket and VPC names | 2026-10-16 | `unverified` | Naming review of 2026-10-16; Verification 11-11: confirmed with the destroy of the 2026-11-11 deploy |
 | R20 | Architecture diagram PNG in the README with the caption about the build subnet; remove `architecture.jpeg` and its outdated note. Fix in the diagram first: `MySQL :3309` to `:3306`, `/upoads` to `/uploads` | 2026-10-16 | `unverified` | Naming review of 2026-10-16; Verification 11-11: diagram content not reviewed in this pass |
 
 ### 1. Finish verifying what is already deployed
@@ -40,7 +39,6 @@ Applies the naming convention of the architecture style guide (`[project]-[compo
 | T04 | An instance whose startup script fails is reported unhealthy and replaced | 2026-10-08 | `pending` | Verification E3 |
 | T05 | The admin panel cannot install or edit plugins and themes (`DISALLOW_FILE_MODS`). The theme editor answered 403 to the attacker of E4; plugin installation still to check (B7) | 2026-10-08 | `unverified` | Devlog 10-08, 21; Verification 10-26, E4; Verification 11-11: theme editor refused to an attacker (E4 of 2026-10-26); no "Add New" in Plugins (B4 of 2026-11-09) |
 | T06 | A rollout that replaces the function source zip passes without `_ALLOW_DESTRUCTIVE` | 2026-10-08 | `unverified` | Verification E4 |
-| T07 | Destroy procedure with `configs/destroy.sh` works as the README describes | 2026-10-08 | `unverified` | Verification E5 |
 
 ### 2. Secrets
 
@@ -167,3 +165,5 @@ Changes to take the project from a portfolio deployment to one configured and do
 | T32 | Remove the snapshot backups from the function and the scheduler, and configure point-in-time recovery explicitly (`retained_backups`, `transaction_log_retention_days`, backup window). The daily export stays. Replaces T13 | 2026-10-14 | 2026-11-11 | Production review of 2026-10-14; Verification 11-11, 4.2 |
 | T35 | Separate pipeline service accounts: read-only for pull request plans, which can run code from the PR, and the account with write roles for the apply only | 2026-10-14 | 2026-11-11 | Production review of 2026-10-14; implemented in R15; Verification 11-11, as R15 |
 | T42 | Cloud Armor: OWASP rules, and rate limiting on `wp-login.php` and `xmlrpc.php` | 2026-10-14 | 2026-11-11 | Production review of 2026-10-14; implemented in R26; Verification 11-11, as R26 |
+| R16 | `configs/destroy.sh` with the new bucket and VPC names | 2026-10-16 | 2026-11-11 | Naming review of 2026-10-16; Verification 11-11, 8.1, the destroy finished with the new bucket and VPC names |
+| T07 | Destroy procedure with `configs/destroy.sh` works as the README describes | 2026-10-08 | 2026-11-11 | Verification E5; Verification 11-11, 8.1, `destroy.sh empty-buckets` then `terraform destroy`, as the README describes |

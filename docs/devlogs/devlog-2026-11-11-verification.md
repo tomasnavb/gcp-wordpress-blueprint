@@ -100,7 +100,7 @@ Skipped, with their reason: B2 (no second account in the organization), the logi
 
 | # | Check | Result |
 |---|---|---|
-| 8.1 | `configs/destroy.sh empty-buckets`, `terraform destroy`, reserved IP released | `pending` |
+| 8.1 | `configs/destroy.sh empty-buckets`, `terraform destroy`, reserved IP released | `done` (`configs/destroy.sh empty-buckets` first, then `terraform destroy` finished without errors) |
 
 ## Errors found
 
