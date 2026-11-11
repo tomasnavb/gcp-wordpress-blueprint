@@ -30,7 +30,7 @@ Result values: `pending`, `done`, `failed`, `skipped`. When a check passes, the 
 | 3.2 | The uptime check passes from the three regions with the content match `https://api.w.org/`, and the incident closes by itself | `done` |
 | 3.3 | Without an IAP session, `/wp-admin/` asks for the Google sign-in (B4, check 8) | `done` (a new incognito window led to IAP. `?gcp-iap-mode=CLEAR_LOGIN_COOKIE` only works on a path behind IAP: on `/` it reaches the public backend) |
 | 3.4 | Cloud Armor decisions in the load balancer logs, priorities 100 and 150 (B10) | `done` (`/xmlrpc.php` with 100; `/WP-LOGIN.PHP` and `/wp-login.php/x` with 150) |
-| 3.5 | TLS 1.1 rejected: `curl --tlsv1.1 --tls-max 1.1 https://<domain>` | `pending` (the first try is not valid: `curl: (35) OpenSSL/3.0.13: error:0A0000BF:SSL routines::no protocols available` is the client refusing TLS 1.1 at its default security level, before any connection. To repeat with `--ciphers 'DEFAULT@SECLEVEL=0'`, expecting an alert from the server) |
+| 3.5 | TLS 1.1 rejected: `curl --tlsv1.1 --tls-max 1.1 https://<domain>` | `done` (`* TLSv1.1 (IN), TLS alert, protocol version (582)`: the alert comes from the load balancer. The first try, without `--ciphers 'DEFAULT@SECLEVEL=0'`, failed on the client with `no protocols available`, before any connection, and proved nothing) |
 
 ## 4. Database
 
@@ -90,7 +90,7 @@ Skipped, with their reason: B2 (no second account in the organization), the logi
 
 | # | Check | Result |
 |---|---|---|
-| 7.1 | The twelve screenshots of the README, retaken (T09) | `done` (retaken: triggers, builds, VM instances, healthy backend, Cloud SQL, secrets, scheduler, uploads bucket. The two WordPress screenshots of 2026-10-11 are kept. The HTTP redirect is in the smoke test screenshot; the TLS one is to be retaken with 3.5) |
+| 7.1 | The twelve screenshots of the README, retaken (T09) | `done` (retaken: triggers, builds, VM instances, healthy backend, Cloud SQL, secrets, scheduler, uploads bucket. The two WordPress screenshots of 2026-10-11 are kept. The HTTP redirect is in the smoke test screenshot; the TLS one was retaken with 3.5) |
 | 7.2 | New: smoke tests, Cloud Armor policy, scanner denials in the logs, dashboard, uptime check, failover | `done` (smoke tests, Cloud Armor policies, dashboard, uptime checks, uptime alert, failover, export job, MIG rolling update, Packer VM subnet, default network removal) |
 
 ## 8. Teardown

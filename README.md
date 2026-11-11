@@ -956,6 +956,10 @@ From the verification deploy from scratch of 2026-11-11 ([docs/devlogs/devlog-20
 
 ![Cloud Armor policies](docs/screenshots/cloud-armor-policies.png)
 
+**TLS 1.1 is rejected.** The client offers TLS 1.1 (allowed on the client with `DEFAULT@SECLEVEL=0`, which OpenSSL 3 disables by default) and the load balancer answers with a `protocol version` alert (`(IN)`: sent by the server). Its SSL policy accepts TLS 1.2 and later only.
+
+![TLS 1.1 rejected](docs/screenshots/tls1.1-rejected.png)
+
 ### CI/CD
 
 **Cloud Build — Triggers.** The four triggers created by `configs/setup.sh`.
