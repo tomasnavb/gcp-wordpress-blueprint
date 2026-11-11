@@ -60,9 +60,9 @@ The instances stayed healthy during the failover: `/health.php` does not use the
 |---|---|---|
 | 5.1 | Ops Agent active on both instances, reading `/server-status?auto` (D2) | `done` |
 | 5.2 | No Apache access log in Cloud Logging, the error log present (D4) | `done` (the error entries are the smoke test's `/server-status` requests, `AH01630: client denied by server configuration`, and the rolling update of the domain fix) |
-| 5.3 | Every chart of the dashboard has data (D3, D9) | `failed`, then fixed (E2): every chart but "Apache current connections". Pending: the apply of the fix |
+| 5.3 | Every chart of the dashboard has data (D3, D9) | `done` (after E2: the scoreboard replaced "Apache current connections", which had no data) |
 | 5.4 | The filter of the export alert matches the scheduler and function entries of 4.4 (D8) | `pending` |
-| 5.5 | A plan after the apply shows no change to the dashboard (D10) | `pending` |
+| 5.5 | A plan after the apply shows no change to the dashboard (D10) | `failed`, then fixed (E3). Pending: a plan after the apply of the fix, which must show `No changes` |
 
 ## 6. Pipeline
 
@@ -125,3 +125,28 @@ Query A: Cannot find metric(s) that match type = "workload.googleapis.com/apache
 **Cause.** The Apache receiver of the Ops Agent takes `apache.current_connections` from the `ConnsTotal` field of `/server-status?auto`, which only the `event` and `worker` MPMs report. The image installs `libapache2-mod-php`, which runs Apache with the `prefork` MPM. On an instance, `/server-status?auto` reports `BusyWorkers` and `IdleWorkers` and no `Conns*` line, so the metric is never created.
 
 **Fix.** The chart is replaced by "Apache scoreboard by state" (`apache.scoreboard`, grouped by state), which `prefork` reports: what each slot is doing (waiting, reading, writing, keepalive). A comment in `monitoring.tf` and the README say why there is no connections chart. Moving to the `event` MPM with PHP-FPM would bring the metric back, and is a larger change to the image.
+
+### E3 — Every plan updates the dashboard in place
+
+Section 5, the plan after the apply of E2 (check D10). With nothing changed, the plan updated `google_monitoring_dashboard.main` again (the project number is replaced by `<project-number>`):
+
+```text
+# google_monitoring_dashboard.main will be updated in-place
+  ~ dashboard_json = jsonencode(
+      ~ {
+          - etag         = "7083a5898ee9786fcd642a71b43eaba6"
+          ~ mosaicLayout = {
+              ~ tiles   = [
+                  ~ {
+                      ~ widget = { ~ xyChart = { ~ dataSets = [ ~ { - targetAxis = "Y1" ... } ] } }
+                      + xPos   = 0
+                      + yPos   = 0
+                    },
+                  ...
+                  ~ { ... ~ aggregation = { + groupByFields = [] ... } ... },
+          - name         = "projects/<project-number>/dashboards/<dashboard-id>"
+```
+
+**Cause.** The API normalizes the dashboard JSON it stores: it drops fields equal to 0 (`xPos`, `yPos`) and empty lists (`groupByFields`), and adds the default axis of each series (`targetAxis = "Y1"`). Terraform compares the JSON of the configuration with the stored one. The provider ignores the fields the API adds at the top level (`etag`, `name`), not inside the list of tiles, so every plan showed a change.
+
+**Fix.** The JSON is generated the way the API stores it: `xPos` and `yPos` only when not 0, `groupByFields` only when not empty, and `targetAxis = "Y1"` written in each series. The dashboard is the same. The JSON was rendered offline with the same expression to check the tiles. `lifecycle { ignore_changes = [dashboard_json] }` was ruled out: it would hide the diff and also stop real changes to the dashboard, such as the one of E2. The check passes when the plan after the apply of the fix shows `No changes`.

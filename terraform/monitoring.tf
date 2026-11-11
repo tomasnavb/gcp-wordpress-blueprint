@@ -241,35 +241,45 @@ resource "google_monitoring_dashboard" "main" {
   depends_on = [google_project_service.gcp_services]
 
   # Two charts per row on a 48-column grid.
+  #
+  # The JSON is written the way the API stores it, so a plan with no change shows none: the API
+  # drops fields equal to 0 (xPos, yPos) and empty lists (groupByFields), and adds the default axis
+  # of each series (targetAxis "Y1"). The provider ignores only what the API adds at the top level
+  # (etag, name), not inside the tiles (devlog-2026-11-11-verification.md, E3).
   dashboard_json = jsonencode({
     displayName = local.monitoring_dashboard_name
     mosaicLayout = {
       columns = 48
-      tiles = [for i, tile in local.dashboard_tiles : {
-        xPos   = (i % 2) * 24
-        yPos   = floor(i / 2) * 16
-        width  = 24
-        height = 16
-        widget = {
-          title = tile.title
-          xyChart = {
-            dataSets = [for s in tile.series : {
-              plotType = "LINE"
-              timeSeriesQuery = {
-                timeSeriesFilter = {
-                  filter = s[0]
-                  aggregation = {
-                    alignmentPeriod    = "60s"
-                    perSeriesAligner   = s[1]
-                    crossSeriesReducer = s[2]
-                    groupByFields      = s[3]
+      tiles = [for i, tile in local.dashboard_tiles : merge(
+        (i % 2) * 24 != 0 ? { xPos = (i % 2) * 24 } : {},
+        floor(i / 2) * 16 != 0 ? { yPos = floor(i / 2) * 16 } : {},
+        {
+          width  = 24
+          height = 16
+          widget = {
+            title = tile.title
+            xyChart = {
+              dataSets = [for s in tile.series : {
+                plotType   = "LINE"
+                targetAxis = "Y1"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = s[0]
+                    aggregation = merge(
+                      {
+                        alignmentPeriod    = "60s"
+                        perSeriesAligner   = s[1]
+                        crossSeriesReducer = s[2]
+                      },
+                      length(s[3]) > 0 ? { groupByFields = s[3] } : {},
+                    )
                   }
                 }
-              }
-            }]
+              }]
+            }
           }
-        }
-      }]
+        },
+      )]
     }
   })
 }
