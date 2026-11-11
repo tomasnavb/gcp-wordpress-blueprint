@@ -62,7 +62,7 @@ The instances stayed healthy during the failover: `/health.php` does not use the
 | 5.2 | No Apache access log in Cloud Logging, the error log present (D4) | `done` (the error entries are the smoke test's `/server-status` requests, `AH01630: client denied by server configuration`, and the rolling update of the domain fix) |
 | 5.3 | Every chart of the dashboard has data (D3, D9) | `done` (after E2: the scoreboard replaced "Apache current connections", which had no data) |
 | 5.4 | The filter of the export alert matches the scheduler and function entries of 4.4 (D8) | `pending` |
-| 5.5 | A plan after the apply shows no change to the dashboard (D10) | `failed`, then fixed (E3). Pending: a plan after the apply of the fix, which must show `No changes` |
+| 5.5 | A plan after the apply shows no change to the dashboard (D10) | `done` (after E3: the plan with the fix updated the dashboard once, and the plan after its apply showed `No changes`) |
 
 ## 6. Pipeline
 
