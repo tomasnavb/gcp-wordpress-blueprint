@@ -30,7 +30,7 @@ Result values: `pending`, `done`, `failed`, `skipped`. When a check passes, the 
 | 3.2 | The uptime check passes from the three regions with the content match `https://api.w.org/`, and the incident closes by itself | `done` |
 | 3.3 | Without an IAP session, `/wp-admin/` asks for the Google sign-in (B4, check 8) | `done` (a new incognito window led to IAP. `?gcp-iap-mode=CLEAR_LOGIN_COOKIE` only works on a path behind IAP: on `/` it reaches the public backend) |
 | 3.4 | Cloud Armor decisions in the load balancer logs, priorities 100 and 150 (B10) | `done` (`/xmlrpc.php` with 100; `/WP-LOGIN.PHP` and `/wp-login.php/x` with 150) |
-| 3.5 | TLS 1.1 rejected: `curl --tlsv1.1 --tls-max 1.1 https://<domain>` | `done` |
+| 3.5 | TLS 1.1 rejected: `curl --tlsv1.1 --tls-max 1.1 https://<domain>` | `pending` (the first try is not valid: `curl: (35) OpenSSL/3.0.13: error:0A0000BF:SSL routines::no protocols available` is the client refusing TLS 1.1 at its default security level, before any connection. To repeat with `--ciphers 'DEFAULT@SECLEVEL=0'`, expecting an alert from the server) |
 
 ## 4. Database
 
@@ -52,6 +52,17 @@ Failover, 2026-11-11:
 | Primary zone | `europe-west1-c` to `europe-west1-b` |
 | Private IP | Unchanged, the instances reconnected by themselves |
 
+Second run, the same day, back to the first zone:
+
+| Measure | Value |
+|---|---|
+| Operation | `FAILOVER`, `DONE`, 16:48:05 to 16:48:39 UTC (34 s) |
+| Site downtime | 20.9 s, from +4.6 s to +25.5 s; 2 requests with no answer within the 3 s timeout (`000`), then 9 answered 500 |
+| Primary zone | `europe-west1-b` to `europe-west1-c` |
+| Private IP | Unchanged |
+
+Across both runs, the downtime was 10 to 21 s. The `000` of the second run are requests that hung: WordPress was connecting to the old primary, which had stopped answering without closing the connection, and PHP waited instead of failing at once. A shorter connection timeout in PHP (`mysqli.connect_timeout`) would turn that wait into a fast error; left as an improvement.
+
 The instances stayed healthy during the failover: `/health.php` does not use the database, on purpose. The site was down only for the part of the operation when the primary switched.
 
 ## 5. Monitoring
@@ -61,7 +72,7 @@ The instances stayed healthy during the failover: `/health.php` does not use the
 | 5.1 | Ops Agent active on both instances, reading `/server-status?auto` (D2) | `done` |
 | 5.2 | No Apache access log in Cloud Logging, the error log present (D4) | `done` (the error entries are the smoke test's `/server-status` requests, `AH01630: client denied by server configuration`, and the rolling update of the domain fix) |
 | 5.3 | Every chart of the dashboard has data (D3, D9) | `done` (after E2: the scoreboard replaced "Apache current connections", which had no data) |
-| 5.4 | The filter of the export alert matches the scheduler and function entries of 4.4 (D8) | `pending` |
+| 5.4 | The filter of the export alert matches the scheduler and function entries of 4.4 (D8) | `done` (in the last day: the scheduler entries with `job_id` `wp-blueprint-db-export-job-prod`, `INFO`, and the function request with `service_name` `wp-blueprint-db-backup-fn-prod`, status 200. Logs Explorer showed nothing at first only because its default range is the last hour) |
 | 5.5 | A plan after the apply shows no change to the dashboard (D10) | `done` (after E3: the plan with the fix updated the dashboard once, and the plan after its apply showed `No changes`) |
 
 ## 6. Pipeline
@@ -69,9 +80,9 @@ The instances stayed healthy during the failover: `/health.php` does not use the
 | # | Check | Result |
 |---|---|---|
 | 6.1 | The `_DOMAIN_NAMES` substitution of the two plan triggers holds the right domain (E1) | `pending` |
-| 6.2 | Image build from the trigger: build subnet, no external IP or service account, through IAP; the build VM cannot reach Cloud SQL (E2, E3 of 2026-11-09) | `pending` |
-| 6.3 | The new image rolls out to the MIG without `_ALLOW_DESTRUCTIVE` (E4 of 2026-11-09) | `pending` |
-| 6.4 | `configs/delete-default-network.sh` removes the default network (E9 of 2026-11-09) | `pending` |
+| 6.2 | Image build from the trigger: build subnet, no external IP or service account, through IAP; the build VM cannot reach Cloud SQL (E2, E3 of 2026-11-09) | `done` (screenshot of the build VM in `build-subnet-prod-europe-west1`; no external IP or service account by the Packer template, and the build could only reach it through IAP) |
+| 6.3 | The new image rolls out to the MIG without `_ALLOW_DESTRUCTIVE` (E4 of 2026-11-09) | `done` (the plan replaced the instance template, the apply passed without `_ALLOW_DESTRUCTIVE`, and the MIG replaced both instances one at a time) |
+| 6.4 | `configs/delete-default-network.sh` removes the default network (E9 of 2026-11-09) | `done` |
 
 Skipped, with their reason: B2 (no second account in the organization), the login ban (it would block the operator IP for 30 minutes), E5 and E7 (they need forced code changes), E6 (`check_destructive.py` unchanged since D03) and E8 (after the merge to `main`).
 
@@ -79,8 +90,8 @@ Skipped, with their reason: B2 (no second account in the organization), the logi
 
 | # | Check | Result |
 |---|---|---|
-| 7.1 | The twelve screenshots of the README, retaken (T09) | `pending` (taken for section 1, except the apply outputs) |
-| 7.2 | New: smoke tests, Cloud Armor policy, scanner denials in the logs, dashboard, uptime check, failover | `pending` |
+| 7.1 | The twelve screenshots of the README, retaken (T09) | `done` (retaken: triggers, builds, VM instances, healthy backend, Cloud SQL, secrets, scheduler, uploads bucket. The two WordPress screenshots of 2026-10-11 are kept. The HTTP redirect is in the smoke test screenshot; the TLS one is to be retaken with 3.5) |
+| 7.2 | New: smoke tests, Cloud Armor policy, scanner denials in the logs, dashboard, uptime check, failover | `done` (smoke tests, Cloud Armor policies, dashboard, uptime checks, uptime alert, failover, export job, MIG rolling update, Packer VM subnet, default network removal) |
 
 ## 8. Teardown
 

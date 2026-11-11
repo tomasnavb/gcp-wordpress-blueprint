@@ -944,7 +944,17 @@ What the code does not do yet, tracked in [docs/to-do.md](docs/to-do.md):
 
 ## Screenshots
 
-Taken from a deploy from scratch of this repository, **before the refactor**: resource names are the old ones (`wordpress-*`), and the management VM still appears. They will be replaced after the verification deploy.
+From the verification deploy from scratch of 2026-11-11 ([docs/devlogs/devlog-2026-11-11-verification.md](docs/devlogs/devlog-2026-11-11-verification.md)), except the two WordPress screenshots, from 2026-10-11.
+
+### Edge security
+
+**Smoke tests.** [tests/smoke/edge-security.sh](tests/smoke/edge-security.sh) against the deployed site: unknown hosts rejected, the admin area and the login only through IAP, path variants that would skip IAP blocked or normalized to a path behind IAP, `admin-ajax.php` and the uploads public, `xmlrpc.php` and `/server-status` closed, HTTP redirected to HTTPS.
+
+![Smoke tests](docs/screenshots/smoke-test.png)
+
+**Cloud Armor — Policies.** One policy per backend service: the public one with the host, `xmlrpc.php`, protected path and WAF rules, and the one behind IAP with the host rule and the login rate limit.
+
+![Cloud Armor policies](docs/screenshots/cloud-armor-policies.png)
 
 ### CI/CD
 
@@ -952,51 +962,77 @@ Taken from a deploy from scratch of this repository, **before the refactor**: re
 
 ![Cloud Build triggers](docs/screenshots/gcb-triggers.png)
 
-**Cloud Build — Plan and apply.** A plan generated on `main`, the apply of that plan, and the build of the backup function that the apply starts in `europe-west1`.
+**Cloud Build — First deploy.** The first image build (8 min 18 s), the plan, the apply, and the build of the backup function that the apply starts in `europe-west1`.
 
-![Cloud Build history with a successful plan and apply](docs/screenshots/plan-apply-success.png)
+![Cloud Build history with the image build, plan and apply](docs/screenshots/packer-tfplan-tfapply-success.png)
+
+**Image build in the build subnet.** The temporary Packer VM of a build from the trigger, in `build-subnet-prod-europe-west1`, reached through IAP.
+
+![Packer VM in the build subnet](docs/screenshots/packer-vm-custom-subnet.png)
+
+**Rolling update to a new image.** After a new image, the MIG creates two instances from the new template before deleting the old two. No `_ALLOW_DESTRUCTIVE` needed.
+
+![MIG rolling update](docs/screenshots/mig-rolling-update-success.png)
+
+**Default network removed.** `configs/delete-default-network.sh` after the first apply: the `default` network and its open firewall rules, used only by the first image build.
+
+![Default network removal](docs/screenshots/delete-default-network-script.png)
 
 ### Compute
 
-**Compute Engine — VM instances.** The management VM, since removed, and a WordPress instance of the MIG. Neither has an external IP.
+**Compute Engine — VM instances.** Two WordPress instances of the MIG, in two zones, without external IPs.
 
 ![VM instances](docs/screenshots/vm-instances.png)
 
-**Load balancer — Healthy backend.** The MIG as backend of the load balancer. An instance counts as healthy only after its startup script has finished configuring it.
+**Load balancer — Healthy backend.** The MIG as backend, 2 of 2 healthy. An instance counts as healthy only after its startup script has finished configuring it.
 
 ![Healthy backend](docs/screenshots/healthy-backend.png)
 
 ### Data
 
-**Cloud SQL — Instance.**
+**Cloud SQL — Instance.** MySQL 8.4, Enterprise edition, without a public IP.
 
 ![Cloud SQL instance](docs/screenshots/cloudsql-instance.png)
 
-**Secret Manager — Secrets.**
+**Secret Manager — Secrets.** The database settings read by the instances at boot. The password is never in the Terraform state.
 
 ![Secret Manager secrets](docs/screenshots/secrets.png)
 
-**Cloud Scheduler — Backup jobs.** The export job, and the snapshot job since removed, after a successful run.
+**Cloud Scheduler — Export job.** The daily export, at midnight `Europe/Paris`, after a successful run.
 
-![Cloud Scheduler backup jobs](docs/screenshots/scheduler-jobs-success.png)
+![Cloud Scheduler export job](docs/screenshots/scheduler-jobs-success.png)
 
-**Cloud Storage — Uploads in the bucket.** A file uploaded from WordPress, stored in the bucket that every instance mounts with Cloud Storage FUSE. The folder was `uploads/` at the time; it is now `wp-content/uploads/`.
+**Export file.** A manual run of the job, and the SQL file it leaves in the backup bucket.
+
+![Export file in the backup bucket](docs/screenshots/export-job-success.png)
+
+**Cloud Storage — Uploads.** A file uploaded from WordPress, stored under `wp-content/uploads/` so that the object path equals the URL path the backend bucket serves.
 
 ![Uploaded file in the bucket](docs/screenshots/static-objects-upload.png)
 
-### HTTPS
+### Resilience
 
-**HTTP redirects to HTTPS.** A request on port 80 is answered with a 301 to the HTTPS URL.
+**Cloud SQL failover.** [tests/resilience/sql-failover.sh](tests/resilience/sql-failover.sh): the primary moves to the standby zone with the same private IP, and the site is down for 21 s in this run (10 s in the first). The `000` are requests that hung while WordPress connected to the old primary.
 
-![HTTP to HTTPS redirect](docs/screenshots/https-redirection.png)
+![Cloud SQL failover test](docs/screenshots/sql-failover.png)
 
-**TLS 1.1 is rejected.** The SSL policy of the load balancer accepts TLS 1.2 and later only.
+### Monitoring
 
-![TLS 1.1 rejected](docs/screenshots/old-tls-versions-forbidden.png)
+**Dashboard.** Part of `wp-blueprint-dashboard-prod`: Apache requests, workers, scoreboard and traffic, from the Ops Agent; CPU and memory of the instances.
+
+![Monitoring dashboard](docs/screenshots/dashboard.png)
+
+**Uptime check.** The HTTPS check on the home page, passing from the three regions it runs in.
+
+![Uptime check](docs/screenshots/uptime-checks.png)
+
+**Uptime alert.** The alert firing before WordPress was installed, when the home page redirects to the installer and the check fails its content match. It closed by itself once the site answered.
+
+![Uptime alert firing](docs/screenshots/uptime-check-alert.png)
 
 ### WordPress
 
-**Setup over HTTPS.** The installer under `/wp-admin`, served on the domain through the load balancer with the managed certificate. Since the refactor it is only reachable through IAP.
+**Installer.** The installer, from a deploy of 2026-10-11. Since then it is only reachable through IAP: the first request goes to the Google sign-in.
 
 ![WordPress setup](docs/screenshots/wordpress-setup.png)
 
