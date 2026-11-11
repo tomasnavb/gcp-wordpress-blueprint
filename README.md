@@ -5,11 +5,11 @@
 ![Google Provider](https://img.shields.io/badge/Google_Provider-7.25.0-4285F4?logo=google-cloud&logoColor=white)
 ![IaC](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform&logoColor=white)
 
-> **Refactor in progress.** The project is being refactored towards a production-ready setup: a naming convention for every resource, the management VPC removed, a dedicated subnet for the image build, separate service accounts for plan, apply and image build, and an edge layer with Cloud Armor, Cloud CDN and a backend bucket for uploads. The [architecture diagram](#architecture) shows the target design; the rest of this README describes the code as it is today. Progress is tracked in [docs/to-do.md](docs/to-do.md).
+> **Refactor complete in the code; the verification deploy is pending.** The project was refactored towards a production-ready setup: a naming convention for every resource, the management VPC removed, a dedicated subnet for the image build, one service account per pipeline job, an edge layer with Cloud Armor, Cloud CDN and a backend bucket for uploads, and the admin area behind Identity-Aware Proxy, added after a bot took over the installer of the first verification deploy. A deploy from scratch confirms it (task R22 in [docs/to-do.md](docs/to-do.md)). The screenshots are from the deploy before the refactor and still show the old resource names.
 
-**Terraform, Packer and Cloud Build code that deploys WordPress into a Google Cloud project of your own: an auto-healing managed instance group behind a global HTTPS load balancer, Cloud SQL on a private IP, scheduled backups and credentials in Secret Manager.** Infrastructure changes go through pull requests: plan on every PR, apply of the plan generated on `main` by a manual, approved trigger.
+**Terraform, Packer and Cloud Build code that deploys WordPress into a Google Cloud project of your own: an auto-healing managed instance group behind a global HTTPS load balancer with Cloud Armor and Cloud CDN, the admin area behind Identity-Aware Proxy, Cloud SQL on a private IP, scheduled backups and credentials in Secret Manager.** Infrastructure changes go through pull requests: plan on every PR, apply of the plan generated on `main` by a manual, approved trigger.
 
-> **Note:** This is a portfolio project, not a production deployment. Some cost-optimized values (instance tier, disk size, a single instance at rest) differ from production recommendations documented in the code. Known gaps are listed in [Known Limitations](#known-limitations).
+> **Note:** This is a portfolio project, not a production deployment. Some cost-optimized values (instance tier, disk size) differ from production recommendations documented in the code. Known gaps are listed in [Known Limitations](#known-limitations).
 
 ---
 
@@ -24,12 +24,13 @@ gcloud projects create $PROJECT_ID --name="WordPress on GCP"
 gcloud config set project $PROJECT_ID
 gcloud billing projects link $PROJECT_ID --billing-account=BILLING_ACCOUNT_ID
 
-# 2. Repository and variables (Steps 2 and 3); set domain_names in terraform/terraform.tfvars
+# 2. Repository and variables (Steps 2 and 3)
 gh repo clone YOUR_GITHUB_USERNAME/gcp-wordpress-blueprint
 cd gcp-wordpress-blueprint
 export REPO_NAME="gcp-wordpress-blueprint"
 export REPO_OWNER="your-github-username-or-org"
 export IAP_USER_EMAIL="you@example.com"
+export DOMAIN_NAMES="wordpress.example.com"
 export RESERVE_LB_IP="true"
 
 # 3. Connect the repository in the console (Step 4):
@@ -37,18 +38,28 @@ export RESERVE_LB_IP="true"
 
 # 4. Bootstrap (Step 5); then point your domain's DNS A record to the IP it prints
 bash configs/setup.sh
+#    Only if the project is in an organization (Step 5b)
+bash configs/org-policy-exception.sh
 
 # 5. First image, plan and apply (Steps 6 to 8)
-CB_SA="projects/${PROJECT_ID}/serviceAccounts/terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
+SA_PREFIX="projects/${PROJECT_ID}/serviceAccounts"
+SA_SUFFIX="@${PROJECT_ID}.iam.gserviceaccount.com"
 gcloud builds submit --project=$PROJECT_ID --config=cloudbuild/packer.yaml \
-  --substitutions="_PROJECT_ID=$PROJECT_ID,_ZONE=europe-west1-b,_NETWORK=default,_SUBNETWORK=default,_USE_IAP=false" \
-  --service-account="$CB_SA"
+  --substitutions="_PROJECT_ID=$PROJECT_ID,_ZONE=europe-west1-b,_ENVIRONMENT=prod,_USE_IAP=false" \
+  --service-account="${SA_PREFIX}/packer-build-sa${SA_SUFFIX}"
 gcloud builds submit --project=$PROJECT_ID --config=cloudbuild/terraform-plan.yaml \
-  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-wordpress-terraform-state,_IAP_USER_EMAIL=$IAP_USER_EMAIL,_SAVE_PLAN=true" \
-  --service-account="$CB_SA"
+  --substitutions="^;^_PROJECT_ID=$PROJECT_ID;_STATE_BUCKET=${PROJECT_ID}-tfstate;_IAP_USER_EMAIL=$IAP_USER_EMAIL;_DOMAIN_NAMES=$DOMAIN_NAMES;_SAVE_PLAN=true" \
+  --service-account="${SA_PREFIX}/terraform-plan-sa${SA_SUFFIX}"
 gcloud builds submit --project=$PROJECT_ID --config=cloudbuild/terraform-apply.yaml \
-  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-wordpress-terraform-state,_PLAN_BUILD_ID=PLAN_BUILD_ID" \
-  --service-account="$CB_SA"
+  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-tfstate,_PLAN_BUILD_ID=PLAN_BUILD_ID" \
+  --service-account="${SA_PREFIX}/terraform-apply-sa${SA_SUFFIX}"
+
+# 6. Install WordPress at https://your-domain/ signed in as IAP_USER_EMAIL, then run the
+#    smoke tests with the load_balancer_ip output of the apply (Step 8)
+bash tests/smoke/edge-security.sh your-domain LOAD_BALANCER_IP
+
+# 7. Optional: remove the default network, used only by the first image build (Step 9)
+bash configs/delete-default-network.sh
 ```
 
 `PLAN_BUILD_ID` is the `BUILD_ID` printed by the plan build. Tear everything down with [Destroy](#destroy) when you are done: the regional Cloud SQL instance is billed while it is up.
@@ -57,41 +68,70 @@ gcloud builds submit --project=$PROJECT_ID --config=cloudbuild/terraform-apply.y
 
 ## Architecture
 
-<a href="docs/architecture-v2.png"><img src="docs/architecture-v2.png" alt="Target architecture" width="100%"></a>
+<a href="docs/architecture-v2.png"><img src="docs/architecture-v2.png" alt="Architecture" width="100%"></a>
 
 *Click the diagram to open it at full size.*
 
-> **Target architecture.** The diagram shows the design the refactor announced at the top is moving to, not the code as it is today: resource names, the edge layer, the service accounts and the absence of the management VPC are not implemented yet. Not shown: `build-subnet-prod-europe-west1`, a subnet of the same VPC that only hosts the ephemeral Packer VM during an image build.
+*Not shown: `build-subnet-prod-europe-west1`, a subnet of the same VPC that only hosts the ephemeral Packer VM during an image build (see [Immutable Infrastructure with Packer](#immutable-infrastructure-with-packer)).*
+
+The diagram follows the [GCP diagram style guide and naming conventions](https://tomasnavarro.hashnode.dev/gcp-diagram-style-guide-and-naming-conventions-by-tomas-navarro).
 
 ### Overview
 
-Traffic enters through a **Global External Application Load Balancer**, which terminates HTTPS with a Google-managed certificate and redirects HTTP to HTTPS, and reaches a **Regional Managed Instance Group** (MIG) of WordPress instances running in the production VPC. The MIG connects to **Cloud SQL (MySQL 8.4)** exclusively via private IP — no public database endpoint exists. WordPress uploads are stored in a **Cloud Storage** bucket that every instance mounts, so the instances keep no state.
+Traffic enters through a **Global External Application Load Balancer**, which terminates HTTPS with a Google-managed certificate and redirects HTTP to HTTPS. **Cloud Armor** filters the requests that reach the instances, and **Cloud CDN** caches static content. Only the site's own domains are served: any other `Host` header gets a 403. WordPress uploads (`/wp-content/uploads/*`) are served from a private **Cloud Storage** bucket through a backend bucket; every other request goes to a **Regional Managed Instance Group** (MIG) of WordPress instances in the production VPC. The admin area and the login reach the same instances through a second backend service behind **Identity-Aware Proxy (IAP)**, so only the operator's Google account gets to them.
 
-A separate **management VPC**, peered with the production VPC, hosts a management VM intended for administrative access to Cloud SQL through the **Cloud SQL Auth Proxy** (that access does not work yet, see [Known Limitations](#known-limitations)), and the temporary VM of every image build. SSH access to both VMs is exclusively through **Identity-Aware Proxy (IAP)** — no public IPs, no bastion hosts.
+The instances connect to **Cloud SQL (MySQL 8.4)** exclusively via private IP — no public database endpoint exists — and mount the uploads bucket, so they keep no state. They have no external IP: outbound traffic goes through **Cloud NAT**, and traffic to Google APIs through Private Google Access. SSH is exclusively through **Identity-Aware Proxy (IAP)**.
 
-A **Cloud Function (v2)** triggered by **Cloud Scheduler** runs two automated backup strategies against Cloud SQL. Database credentials are stored in **Secret Manager** and read by the WordPress instances at startup.
+A **Cloud Function (v2)** triggered by **Cloud Scheduler** exports the database to Cloud Storage every day, and Cloud SQL keeps automated backups with point-in-time recovery. Database credentials are stored in **Secret Manager** and read by the instances at startup.
 
 ---
 
 ## Key Design Decisions
 
+### Naming Convention
+Every resource name follows `[project]-[component]-[environment]`, lowercase, hyphens only, with the short project name `wp-blueprint`: `wp-blueprint-vpc-prod`, `wp-blueprint-web-mig-prod`, `wp-blueprint-db-prod`. Subnets carry the region at the end (`web-subnet-prod-europe-west1`), buckets start with the project ID because their names are unique across all of GCP (`<project_id>-uploads`), and service accounts carry no environment, since each project has its own copy (`web-vm-sa`). The convention is described in the [GCP diagram style guide and naming conventions](https://tomasnavarro.hashnode.dev/gcp-diagram-style-guide-and-naming-conventions-by-tomas-navarro).
+
+Names are built in `terraform/locals.tf` from `name_prefix` and the `environment` variable, not set one by one in variables: each has one job, and some are rebuilt by scripts outside Terraform (`configs/setup.sh`, `configs/destroy.sh`, the Packer template), which say so next to them.
+
 ### Regional MIG over Unmanaged Instance Group
-The production workload uses a Regional Managed Instance Group with auto-healing, a named HTTP port for load balancer integration, and distribution across three zones (`europe-west1-b/c/d`). An instance that fails its health check is replaced automatically, and the autoscaler adds instances under load (1 to 3) — not achievable with a UMIG.
+The production workload uses a Regional Managed Instance Group with auto-healing, a named HTTP port for load balancer integration, and distribution across three zones (`europe-west1-b/c/d`). An instance that fails its health check is replaced automatically, and the autoscaler adds instances under load (2 to 3) — not achievable with a UMIG.
 
-To keep costs down, `min_replicas = 1`: at rest a single instance runs, so losing its zone means downtime until the MIG creates a replacement in another zone. Zone-level fault tolerance requires `min_replicas` of at least 2.
+`min_replicas = 2`: two instances run at all times, in different zones, so one can be replaced (a rolling update, auto-healing, a zone outage) while the other serves. With a single instance, every replacement is downtime.
 
-### Two-VPC Network Isolation
-Production and management traffic are separated into two VPCs connected via VPC Peering. The production VPC handles all user-facing traffic; the management VPC is for administrative access and for the image builds. This limits the blast radius of a misconfiguration and reflects a real-world security boundary.
+### One VPC, Two Subnets
+The production VPC (`wp-blueprint-vpc-prod`) has two subnets in `europe-west1`:
+
+- **Web** (`web-subnet-prod-europe-west1`, `10.0.0.0/24`): the WordPress instances.
+- **Build** (`build-subnet-prod-europe-west1`, `10.0.1.0/28`): only the ephemeral VM Packer creates during an image build. Its own subnet and network tag (`packer-build`) keep its firewall rules apart from the web ones: SSH through IAP is allowed, and egress to the Private Service Access range, where Cloud SQL has its private IP, is denied. The build VM has no reason to reach the database.
+
+An earlier version had a second, management VPC peered with this one. It was removed: VPC peering is not transitive, so the management VM could not reach Cloud SQL's private IP anyway, and the peering opened routes between both networks without isolating anything. The security boundary is IAM, firewall rules and IAP; separation between environments is done with one project per environment.
+
+The network is built with Google's official modules (`terraform-google-modules/network` and `cloud-router`), pinned to exact versions. Both subnets have **Private Google Access**, so traffic to Google APIs (Secret Manager, Cloud Storage, Logging) goes straight to Google instead of through Cloud NAT, which is left for the internet.
 
 ### Private IP for Cloud SQL
-`ipv4_enabled = false` — the database has no public endpoint. Production instances connect via private IP within the same VPC, through a Private Service Access connection (`private_service_access.tf`).
-
-VPC peering is not transitive, so the management VM cannot reach that private IP through its peering with the production VPC. Admin access from the management VM is not working yet (see [Known Limitations](#known-limitations)).
+`ipv4_enabled = false` — the database has no public endpoint. The instances connect via private IP within the VPC, through a Private Service Access connection (`private_service_access.tf`). There is no administrative access path to the database yet (see [Known Limitations](#known-limitations)).
 
 ### IAP for SSH — No Public IPs, No Bastion
-SSH access is granted through IAP tunnel access (`roles/iap.tunnelResourceAccessor`) to a specific operator email. No VM has an external IP address. No bastion host is required.
+SSH access is granted through IAP tunnel access (`roles/iap.tunnelResourceAccessor`) to a specific operator email. No instance has an external IP address, and no bastion host is required.
 
-The operator email is not committed: it is passed to the pipeline as the `_IAP_USER_EMAIL` substitution and validated at plan time. In a production environment the binding would go to a Google group (`group:infra-admins@example.com`) instead of a user, so that team changes do not require a Terraform change.
+The operator email is not committed: it is passed to the pipeline as the `_IAP_USER_EMAIL` substitution and validated at plan time. In a production environment the binding would go to a Google group (`group:infra-admins@example.com`) instead of a user, so that team changes do not require a Terraform change. The same account reaches the admin area through IAP (next section); moving both accesses to a group is task T46 in [docs/to-do.md](docs/to-do.md).
+
+### Admin Area behind IAP
+A fresh WordPress is installed by whoever completes `/wp-admin/install.php` first, and the installer asks for no credentials. In the first verification deploy a bot did exactly that within hours of the deploy, on the site's own domain, most likely found in Certificate Transparency logs, and then tried to edit a theme file to run PHP (`DISALLOW_FILE_MODS` stopped it). The timeline and the evidence are in [devlog-2026-10-26-verification.md](docs/devlogs/devlog-2026-10-26-verification.md) (E4); the decisions that followed, the options considered and the sources, in [devlog-2026-10-30.md](docs/devlogs/devlog-2026-10-30.md).
+
+So the admin area and the login are only reachable through IAP, from the first apply:
+
+- **Routing.** `/wp-admin`, `/wp-admin/*` and `/wp-login.php` go to a second backend service on the same MIG, with IAP enabled. Only principals with `roles/iap.httpsResourceAccessor` on it get through, after signing in with Google: today the operator account (`IAP_USER_EMAIL`). `/wp-admin/admin-ajax.php` stays on the public backend, because themes and plugins call it from the public site.
+- **Installation.** The installer is under `/wp-admin`, so it is behind IAP too. The operator completes it once from the browser (see [Step 8](#step-8-apply-the-plan)).
+- **Two Cloud Armor policies.** On a global external Application Load Balancer, Cloud Armor is evaluated before IAP, and a rule cannot tell which backend a request goes to. The public backend therefore has its own policy, which blocks any path that contains a protected one, after decoding and lowercasing it: Apache and PHP serve variants such as `/wp-login.php/x` or `//wp-admin/` that the path rules of the URL map do not match, and those would otherwise skip IAP. The backend behind IAP has a policy without that rule (see [Edge](#edge-cloud-armor-and-cloud-cdn)).
+- **Application passwords disabled.** They authenticate the REST API, which is served by the public backend, so one of them would reach WordPress as a logged-in user without going through IAP. A must-use plugin in the image turns them off.
+- **The paths are a local, not a variable** (`terraform/locals.tf`), so configuration cannot turn the protection off. In the load balancer module IAP is optional, so the module can be reused without it.
+
+Alternatives considered: installing WordPress from the startup script with WP-CLI, which with two instances needs a lock so that only one installs, and passes the admin credentials through Secret Manager and the boot logs; and an IP allowlist, which still leaves the installation as a manual step, breaks when the operator's IP changes, and trusts an IP rather than an identity.
+
+IAP uses the Google-managed OAuth client, which only admits users of the project's organization: the project must be in an organization, and `IAP_USER_EMAIL` must be an account of it (see [Prerequisites](#prerequisites)).
+
+How all of this is tested, with a smoke test script and manual checks, is in [docs/test-procedure.md](docs/test-procedure.md).
 
 ### Global HTTPS Load Balancer with a Managed Certificate
 The load balancer is global rather than regional because Google-managed SSL certificates, which Google issues and renews on its own, attach to the global external Application Load Balancer. The certificate is only issued once the DNS A record of the domain points to the load balancer IP, and that can take from 15 minutes to over an hour after the first deploy.
@@ -101,48 +141,112 @@ The load balancer is global rather than regional because Google-managed SSL cert
 - **Minimum TLS 1.2.** An SSL policy (`MODERN` profile) replaces the default one, which still accepts TLS 1.0.
 - **One firewall rule for the Google front ends.** With a global load balancer, health check probes and proxied client traffic reach the backends from the same Google ranges (`35.191.0.0/16`, `130.211.0.0/22`). The rule lives in the load balancer module and targets only instances tagged `backend-service`.
 
+### Edge: Cloud Armor and Cloud CDN
+Everything at the edge lives in `terraform/modules/global_external_lb`. The decisions, the options considered and the sources are in [docs/devlogs/devlog-2026-10-25.md](docs/devlogs/devlog-2026-10-25.md).
+
+**Only the site's domains.** The client writes the `Host` header, so it can be anything: the load balancer IP, Google's reverse DNS name for it, or someone else's domain. Bots that sweep cloud IP ranges send those, and in the first verification deploy they reached the WordPress installer that way. The host rule of the URL map only takes `domain_names`; any other host goes to the URL map default. The URL map has no "deny" action, and its default can only be a backend service, a backend bucket or a redirect: a redirect would hand the site's domain to whoever asked, and a bucket would be one more thing reachable from anywhere. So the default is the public backend service, where the first Cloud Armor rule answers 403 to any host that is not one of `domain_names`. WordPress also takes its own address from configuration (`WP_HOME` and `WP_SITEURL`, set at boot from the first domain), never from the request, so links and the password reset email always point to the site's domain.
+
+**Uploads from a private bucket.** The URL map sends `/wp-content/uploads/*` to a backend bucket on the uploads bucket, and everything else to the instances. The objects are stored under the same path WordPress serves them from, so no URL rewrite is needed. The bucket stays private: the load balancer reads it with a Google-managed service account (Private Bucket Access), so public access prevention stays enforced like on every other bucket. Objects can only be read through the load balancer, not straight from Cloud Storage.
+
+**Uploads are public by design.** WordPress serves its uploads as static files without checking who asks: an image in a private post is still readable by URL. The bucket being private does not change that; it only leaves the load balancer as the single way in. Per-user private files would need application-level access control, such as signed URLs, and a separate bucket. A plugin that protects files inside `uploads` with `.htaccess` is not compatible with this setup, because those requests never reach Apache.
+
+**Cloud CDN** on both backends, with a different cache mode on each:
+
+| Backend | Cache mode | TTL | Why |
+|---|---|---|---|
+| Uploads bucket | `FORCE_CACHE_ALL` | 1 hour, also for browsers | Required to cache a private bucket. Safe: a bucket returns the same object to everyone for a URL |
+| Instances | `CACHE_ALL_STATIC` | 1 hour by default, 1 day at most | Caches static assets but never responses with `Set-Cookie`, `Cache-Control: private` or HTML, so pages of logged-in users are never cached |
+
+A new upload gets a new file name and is never served stale. The TTL bounds how long a deleted file keeps being served; an urgent removal is invalidated by hand (see [Remove an upload from the cache](#remove-an-upload-from-the-cache)).
+
+**Cloud Armor**, with one policy per backend service (see [Admin Area behind IAP](#admin-area-behind-iap)), evaluated on every request that reaches the instances. Each rule is defined once in the module and each policy takes the ones it needs:
+
+| Priority | Rule | Public backend | Backend behind IAP |
+|---|---|---|---|
+| 50 | `Host` that is not one of `domain_names`, or no `Host` | `403` | `403` |
+| 100 | `xmlrpc.php`. Not used by this site, and `system.multicall` tries hundreds of passwords in one request | `403` | — (never routed there) |
+| 150 | A path that contains `/wp-admin` or `/wp-login.php`, after decoding and lowercasing it, except `/wp-admin/admin-ajax.php` | `403` | — |
+| 200 | `POST` to `wp-login.php`, per IP | — (the login is behind IAP) | 5 attempts per minute, `429` over that; over 50 in 10 minutes, the IP is banned for 30 minutes |
+| 1000–1010 | Preconfigured WAF rules, OWASP Core Rule Set 4.22, sensitivity 1 | `403`, in **preview** (`waf_preview = true`): they only log what they would block | — (see below) |
+| default | Everything else | Allowed | Allowed |
+
+The login rate limit still matters behind IAP: a Google account with access, if compromised, could try WordPress passwords. The policy of the backend behind IAP also sees the requests IAP is about to reject, since it runs first.
+
+The WAF rules are only on the public backend. A project allows 20 Cloud Armor rules with an expression across all its policies (quota `SECURITY_POLICY_CEVAL_RULES`), WAF rules included: the public policy uses 14 and the one behind IAP 2. Behind IAP only the operator, already signed in with Google, reaches WordPress, and there the WAF would mostly flag the post editor, which sends HTML and scripts. What it gives up: a stolen operator session is not filtered by the WAF. If more rules are needed, the rule sets can be grouped, up to five per rule.
+
+The WAF rules start in preview because the WordPress admin area sends HTML and scripts that can look like attacks. Their matches are reviewed in the load balancer logs, which record every request and Cloud Armor's decision on it, before they are enforced (see [Review and enforce the WAF rules](#review-and-enforce-the-waf-rules)).
+
 ### Reserved IP for the Load Balancer
-A deploy that creates its own IP gets a different address every time, so the DNS record has to be updated and the certificate waits for DNS again. With `lb_use_reserved_ip = true` (the default) the load balancer uses a global IP reserved once by `configs/setup.sh`, outside Terraform. It survives `terraform destroy`, so the DNS record is set once.
+A deploy that creates its own IP gets a different address every time, so the DNS record has to be updated and the certificate waits for DNS again. With `lb_use_reserved_ip = true` the load balancer uses a global IP reserved once by `configs/setup.sh` (`wp-blueprint-lb-ip-prod`), outside Terraform. It survives `terraform destroy`, so the DNS record is set once.
 
 A reserved IP is billed while no load balancer is using it. For a portfolio project that is torn down between tests, release it when a test session ends (see [Destroy](#destroy)), or set both `RESERVE_LB_IP` and `lb_use_reserved_ip` to `false` to let Terraform create and destroy the IP with the load balancer.
 
 ### Stateless WordPress Instances
 Instances in a MIG are replaced at any time: auto-healing, a new image, scaling in. Anything written to their disks is lost, and a file written by one instance does not exist on the others. WordPress keeps writing two kinds of content at runtime, and each is handled differently:
 
-- **Uploads (media).** Stored in the `uploads/` folder of the statics bucket (`wordpress-statics-<project_id>`), which every instance mounts at `wp-content/uploads` with [Cloud Storage FUSE](https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/overview). An image uploaded through one instance is visible from all of them and survives their replacement. WordPress needs no plugin and no change: it writes to what looks like a local folder.
-- **Plugins and themes.** Part of the image. `DISALLOW_FILE_MODS` stops the admin panel from installing, updating or editing them, since a change made there would exist on one instance only. A new plugin, or an update, is a new image and a rolling update.
+- **Uploads (media).** Stored in the uploads bucket (`<project_id>-uploads`), in the folder `wp-content/uploads/`, which every instance mounts at `wp-content/uploads` with [Cloud Storage FUSE](https://docs.cloud.google.com/storage/docs/cloud-storage-fuse/overview). An image uploaded through one instance is visible from all of them and survives their replacement. WordPress needs no plugin and no change: it writes to what looks like a local folder. Visitors get the files from the load balancer and Cloud CDN, not from the instances.
+- **Plugins, themes and languages.** Part of the image. `DISALLOW_FILE_MODS` stops the admin panel from installing, updating or editing them, since a change made there would exist on one instance only. A new plugin, an update or a new language is a new image and a rolling update.
 
 How the mount is wired:
 
 - The image only installs `gcsfuse` (pinned version, from Google's signed apt repository) and creates the mount point. It is the same image for any project.
-- The bucket name and the folder to mount reach the instances as instance metadata (`statics-bucket` and `uploads-folder`), set by Terraform from the same values it uses to create the bucket and the folder, so what is created and what is mounted cannot differ. The name itself is fixed in `locals.tf` and is not a variable: the bucket has one specific job, and `configs/destroy.sh` relies on the same name. The startup script reads it from the metadata server and mounts the `uploads/` folder of the bucket (`--only-dir`) on every boot. The bucket is laid out with one folder per kind of content, so other folders can be added without moving the uploads.
-- `gcsfuse` authenticates as the instance service account, which has `roles/storage.objectUser` on that bucket only. No service account keys.
+- Every name the startup script needs reaches the instances as instance metadata, set by Terraform from the same values it uses to create those resources: the bucket and the folder to mount (`uploads-bucket`, `uploads-folder`) and the names of the database secrets (`secret-db-*`). Nothing is hardcoded in the script, and what is created and what is used cannot differ. The script stops if a key is missing.
+- `gcsfuse` authenticates as the instance service account (`web-vm-sa`), which has `roles/storage.objectUser` on that bucket only. No service account keys.
 - The mount happens before the readiness marker, so an instance that fails to mount is reported unhealthy and replaced.
 - The bucket holds data: `force_destroy = false`, protected in the destructive change check, versioned (overwritten or deleted files kept for 30 days), and without a retention policy, which Cloud Storage FUSE cannot write to.
 
-Cloud Storage FUSE is not a POSIX file system: it has higher latency than a local disk and no file locking. That suits uploads, which are written once and read many times. Serving them straight from the bucket through the load balancer, without going through the instances, is a possible next step.
+Cloud Storage FUSE is not a POSIX file system: it has higher latency than a local disk and no file locking. That suits uploads, which are written once and read many times.
 
 ### Immutable Infrastructure with Packer
-WordPress instances are deployed from a golden image built with Packer (`packer/wordpress.pkr.hcl`). The image includes WordPress, PHP, and all dependencies pre-installed. Terraform resolves the `wordpress-golden` image family to the concrete latest image on every plan, so a new build shows up as an instance template replacement and the MIG rolls it out.
+WordPress instances are deployed from a golden image built with Packer (`packer/wordpress.pkr.hcl`). The image includes WordPress, PHP, and all dependencies pre-installed. Terraform resolves the `wp-blueprint-web` image family to the concrete latest image on every plan, so a new build shows up as an instance template replacement and the MIG rolls it out.
 
-The build VM has no external IP: Packer reaches it through an IAP tunnel in the management VPC, the same way an operator does.
+- **Pinned and verified downloads.** WordPress (7.1.3), its core language packs for ten locales (`de_DE`, `es_AR`, `es_ES`, `fr_FR`, `it_IT`, `ja`, `nl_NL`, `pl_PL`, `pt_BR`, `ru_RU`) and those of the default theme are downloaded at exact versions, and nothing is extracted until every file matches the SHA256 committed in `packer/scripts/checksums.sha256`. WordPress publishes only SHA1, so the SHA256 is computed once, after checking the archive against the official SHA1, by `packer/scripts/update-checksums.sh` (see [Update the WordPress image](#update-the-wordpress-image)); the build never fetches a checksum from the same server as the file. The Packer plugin is pinned too: Packer has no lock file. The languages are in the image because `DISALLOW_FILE_MODS` turns off their installation from the admin panel; the site language is chosen in *Settings → General*.
+- **Build VM in the build subnet, through IAP.** Packer creates the temporary VM in the build subnet, with no external IP, and reaches it through an IAP tunnel. The network names are built in the Packer template from the environment, with the same convention as Terraform.
+- **No service account on the build VM.** It only installs packages from the internet and needs no Google credentials. Without this it would run as the Compute Engine default service account, whose permissions anything running in the VM could use. Packer creates the image from outside, with its own pipeline service account.
+- **First build, the one exception.** The production VPC is created by Terraform, and Terraform needs an image to exist first. So the very first build runs in the `default` network with `_USE_IAP=false`: the build VM gets an external IP for a few minutes. After the first apply, `configs/delete-default-network.sh` removes the `default` network and its open firewall rules. A separate network root with its own state would remove this exception, and is left for when a second environment is added.
 
-### Two Backup Strategies
-- **Export backup** (Cloud SQL export to a SQL file in Cloud Storage) — daily at midnight (`Europe/Paris`), deleted after 90 days by a lifecycle rule on the backup bucket. Full data portability.
-- **Snapshot backup** (on-demand Cloud SQL backup) — every 4 hours. Fast to take and to restore. Cloud SQL does not delete on-demand backups by itself, and the project does not delete them yet, so they accumulate (see [Known Limitations](#known-limitations)).
+### Backups: Daily Export and Point-in-Time Recovery
+- **Daily export** (Cloud SQL export to a SQL file in Cloud Storage) — at midnight (`Europe/Paris`), deleted after 90 days by a lifecycle rule on the backup bucket. Full data portability, and independent of the instance: it survives if the instance is deleted.
+- **Point-in-time recovery** — the Cloud SQL instance has automated daily backups and binary logging enabled: 7 days of transaction logs, the maximum for MySQL on Enterprise edition, and 8 retained backups, one more than the days of logs as Google recommends. A restore can go to any moment of the last 7 days, and always creates a new instance. The backup window starts at 02:00 UTC, a few hours after the daily export.
 
-Both are triggered by two Cloud Scheduler jobs invoking the same Cloud Function v2 with different payload types.
+The export is triggered by a Cloud Scheduler job invoking a Cloud Function v2. An earlier version also took an on-demand snapshot every 4 hours; it was removed, because point-in-time recovery already covers that with finer granularity, and on-demand backups were never deleted.
 
-Independently of the function, the Cloud SQL instance has automated daily backups and binary logging enabled, with Cloud SQL's default retention, which is what allows point-in-time recovery.
+### Monitoring and Alerting
+
+Defined in [terraform/monitoring.tf](terraform/monitoring.tf). Every alert goes by email to the operator, `IAP_USER_EMAIL`, passed by the pipeline and never written in the repository.
+
+- **Uptime check on `https://<domain>/`,** every minute from three regions (Europe, US East, Asia Pacific), with the certificate validated. HTTPS only: uptime checks follow redirects, so a check on `http://` would measure the final HTTPS page, not the redirect, which the smoke tests check. The home page and not `/health.php`, because the home page needs the database: the check covers WordPress and Cloud SQL together, while `/health.php` stays healthy with the database down on purpose. The response must contain `https://api.w.org/`, the REST API link WordPress prints in the `<head>` of every public page whatever the theme: without a content match, before WordPress is installed, the check would follow the redirects to the installer and then to the IAP sign-in, and pass on a 200 from Google. Neither of those pages contains it.
+- **Ops Agent in the image,** at a pinned version from Google's signed apt repository, like gcsfuse. It sends the memory and disk use of the instances, which Compute Engine does not collect without an agent, the Apache metrics, and the Apache error log. It reads the Apache metrics from `mod_status` at `http://localhost/server-status`, which Debian restricts with `Require local`: a request for that path through the load balancer comes from Google's proxy ranges and gets a 403, which the smoke tests check. The Apache access log is not sent: it would repeat the load balancer request logs, already in Cloud Logging, and be paid for twice.
+- **Dashboard** `wp-blueprint-dashboard-prod`: Apache requests, workers, scoreboard and traffic (no connections chart: Apache runs with the prefork MPM, for mod_php, which does not report them); CPU and memory of the instances; load balancer requests by response class and 95th percentile latency; Cloud SQL CPU, memory, connections and disk.
+
+| Alert | Fires when |
+|---|---|
+| `wp-blueprint-alert-uptime-prod` | The uptime check fails from two or more regions for two minutes. One region alone is usually a problem of that checker |
+| `wp-blueprint-alert-ssl-expiry-prod` | The certificate expires in less than 15 days. Google renews it by itself, but the renewal fails if a domain stops pointing to the load balancer |
+| `wp-blueprint-alert-export-failure-prod` | The scheduler job of the daily export fails, or the function answers 5xx. At most one email per hour |
+| `wp-blueprint-alert-db-cpu-prod`, `wp-blueprint-alert-db-memory-prod` | Cloud SQL CPU or memory above 80% for 10 minutes: the signal to size the tier up |
+
+The export alert covers starting the export, not finishing it: the function starts an asynchronous Cloud SQL operation and returns, so an export that starts and then fails inside Cloud SQL sends no alert.
+
+### One Service Account per Pipeline Job
+The pipeline runs each job with its own service account, created by `configs/setup.sh`:
+
+| Service account | Triggers | Can do |
+|---|---|---|
+| `terraform-plan-sa` | Plan on pull requests, plan on `main` | Read only: `roles/viewer`, `roles/iam.securityReviewer`, plus what the plan reads beyond that, each scoped to one resource (the state bucket, the database password secret, the objects Terraform manages) |
+| `terraform-apply-sa` | Apply, manual and approved | The write roles that create and change the project |
+| `packer-build-sa` | Image build | Create the build VM and the image, and open the IAP tunnel |
+
+A `terraform plan` runs code from the pull request: providers, data sources, even an `external` data source that runs any command. With a single account holding write roles, a malicious pull request could use those permissions during its plan, before anyone approved anything. With a read-only plan account, the most a pull request can do is read; writing is reserved for the approved apply.
 
 ### Dedicated Build Identity for the Backup Function
 A Cloud Function v2 involves three identities, and they are easy to confuse:
 
 | Identity | What it does | In this project |
 |---|---|---|
-| Deployer | Creates the function | `terraform-cloud-build`, the pipeline service account |
-| Build | Runs the Cloud Build that turns the source into a container image | `cloudsql-backup-fn-build-sa` |
-| Runtime | Runs the function code | `cloudsql-backup-fn-sa` |
+| Deployer | Creates the function | `terraform-apply-sa`, the apply pipeline service account |
+| Build | Runs the Cloud Build that turns the source into a container image | `db-backup-build-sa` |
+| Runtime | Runs the function code | `db-backup-fn-sa` |
 
 Left unset, the build identity is the Compute Engine default service account, which then needs broad roles added by hand. This project gives the build its own service account with three roles:
 
@@ -156,7 +260,7 @@ Two details shaped how those roles are granted:
 - **IAM bindings take time to propagate.** Created in the same apply as the function, they are not effective yet when the build starts a few seconds later, and the build fails for lack of a permission that is already granted. A 120-second wait (`time_sleep`) sits between the bindings and the function.
 
 ### Secret Manager for Credentials
-WordPress database credentials (`wordpress-db-name`, `wordpress-db-user`, `wordpress-db-password`, `wordpress-db-host`, `wordpress-db-instance-connection`) are stored as secrets and read by the MIG instances at startup via the startup script, which writes them into `wp-config.php` on the instance. The production VM service account has `roles/secretmanager.secretAccessor` on each secret individually (least privilege).
+WordPress database credentials (`wp-blueprint-db-name-prod`, `wp-blueprint-db-user-prod`, `wp-blueprint-db-password-prod`, `wp-blueprint-db-host-prod`) are stored as secrets and read by the instances at startup via the startup script, which writes them into `wp-config.php` on the instance. The instance service account has `roles/secretmanager.secretAccessor` on each secret individually (least privilege).
 
 **The database password never reaches the Terraform state or a saved plan.** Both are files in a bucket, and a secret stored in them is a secret stored outside Secret Manager. Terraform generates and delivers the password with ephemeral resources and write-only arguments:
 
@@ -169,7 +273,7 @@ ephemeral random_password ──► Secret Manager ──(ephemeral read)──�
 - A **write-only argument** is sent to the API and not stored. Terraform cannot tell whether it changed, so each one comes with a version number, and the value is sent again only when that number changes.
 - **Secret Manager is the source of truth.** The Cloud SQL user takes the password from the secret, not from the generator, so the two always hold the same value, even if an apply fails halfway. It is read with an `ephemeral` block and not a `data` source, which would store it in the state.
 
-The other four values (database name, user, host and connection string) are not sensitive and are stored as regular secret versions. See [Rotate the database password](#rotate-the-database-password) for how the version number is used.
+The other three values (database name, user and host) are not sensitive and are stored as regular secret versions. See [Rotate the database password](#rotate-the-database-password) for how the version number is used.
 
 ---
 
@@ -178,15 +282,18 @@ The other four values (database name, user, host and connection string) are not 
 | Service | Purpose |
 |---|---|
 | Compute Engine (Regional MIG) | Auto-healing WordPress instances across 3 zones |
-| Cloud SQL (MySQL 8.4) | Managed relational database, regional (high availability), private IP only |
-| Cloud Load Balancing | Global External Application LB: HTTPS with a Google-managed certificate, HTTP to HTTPS redirect, TLS 1.2 minimum |
+| Cloud SQL (MySQL 8.4) | Managed relational database, regional (high availability), private IP only, point-in-time recovery |
+| Cloud Load Balancing | Global External Application LB: HTTPS with a Google-managed certificate, HTTP to HTTPS redirect, TLS 1.2 minimum, uploads routed to a backend bucket |
+| Cloud Armor | Security policy on the backend service: `xmlrpc.php` blocked, login rate limit and ban, OWASP CRS 4.22 WAF rules |
+| Cloud CDN | Caching of uploads and of static assets served by the instances |
 | Cloud NAT + Cloud Router | Outbound internet access without public IPs |
-| Identity-Aware Proxy | SSH to the management VM, the WordPress instances and the Packer build VM, none of which has a public IP |
-| VPC Network Peering | Private connectivity between prod and mgmt VPCs |
+| Identity-Aware Proxy | SSH to the WordPress instances and to the Packer build VM, neither of which has a public IP |
+| Private Service Access | Private connection between the VPC and Cloud SQL |
 | Secret Manager | Database credentials storage and access |
 | Cloud Functions v2 | Serverless backup orchestration |
-| Cloud Scheduler | Automated backup triggers (cron) |
-| Cloud Storage | Backup exports (90d), function source code, and WordPress uploads mounted on the instances with Cloud Storage FUSE |
+| Cloud Scheduler | Daily export trigger (cron) |
+| Cloud Monitoring | HTTPS uptime check, email alerts (site down, certificate expiry, export failure, Cloud SQL CPU and memory), dashboard. VM and Apache metrics from the Ops Agent in the image |
+| Cloud Storage | WordPress uploads (mounted on the instances, served through the CDN), database exports (90 days), function source code, Terraform state |
 | Packer (HashiCorp) | Golden image build pipeline |
 
 ---
@@ -197,15 +304,17 @@ The other four values (database name, user, host and connection string) are not 
 gcp-wordpress-blueprint/
 ├── README.md
 ├── docs/
-│   ├── architecture-v2.png          # Target architecture diagram (refactor in progress)
-│   ├── architecture.jpeg            # Previous architecture diagram, outdated
+│   ├── architecture-v2.png          # Architecture diagram
 │   ├── to-do.md                     # Pending tasks and their status
-│   ├── devlogs/                     # Problems found during deploys, their causes and fixes
+│   ├── test-procedure.md            # How a deploy is tested: static checks, smoke tests, manual checks
+│   ├── devlogs/                     # Problems found, their causes, fixes and design decisions, by date
 │   └── screenshots/                 # Images used in the Screenshots section
 │
 ├── configs/
-│   ├── setup.sh                     # One-time bootstrap: APIs, state bucket, load balancer IP, Cloud Build SA, IAM, triggers
-│   └── destroy.sh                   # gcloud steps around terraform destroy: empty the data buckets, delete the peering if needed
+│   ├── setup.sh                     # One-time bootstrap: APIs, state bucket, load balancer IP, pipeline SAs, IAM, triggers
+│   ├── destroy.sh                   # gcloud steps around terraform destroy: empty the data buckets, delete the peering if needed
+│   ├── org-policy-exception.sh      # Only in an organization with domain restricted sharing: exception for the load balancer
+│   └── delete-default-network.sh    # Optional, after the first apply: delete the default network and its firewall rules
 │
 ├── cloudbuild/
 │   ├── packer.yaml                  # Cloud Build pipeline: install pinned Packer, golden image build
@@ -216,38 +325,43 @@ gcp-wordpress-blueprint/
 │
 ├── packer/
 │   ├── wordpress.pkr.hcl            # Packer template
-│   ├── variables.pkr.hcl
+│   ├── variables.pkr.hcl            # Variables and the build network names
 │   └── scripts/
-│       └── install.sh               # WordPress + PHP + Apache provisioning, HTTPS proxy config
+│       ├── install.sh               # WordPress + PHP + Apache provisioning, language packs, HTTPS proxy config, Ops Agent
+│       ├── checksums.sha256         # SHA256 of every file install.sh downloads (WordPress and language packs)
+│       └── update-checksums.sh      # Regenerates checksums.sha256 after a version change, checking the official SHA1
+│
+├── tests/
+│   └── smoke/
+│       └── edge-security.sh         # Read-only checks of a deployed site: hosts, IAP, Cloud Armor, HTTPS
 │
 └── terraform/
     ├── main.tf                      # Providers, backend (GCS, bucket via -backend-config)
-    ├── terraform.tfvars             # Variable values (project_id and iap_user_email are passed by the pipeline)
+    ├── terraform.tfvars             # Variable values (project_id, iap_user_email and domain_names are passed by the pipeline)
     ├── .terraform.lock.hcl          # Provider version lock (committed for CI/CD consistency)
     ├── APIs.tf                      # GCP API enablement
-    ├── compute.tf                   # Management VM + MIG + LB modules
+    ├── compute.tf                   # Golden image lookup, MIG and load balancer modules
     ├── database.tf                  # Cloud SQL instance, database, user, password generated with ephemeral resources
-    ├── functions.tf                 # Cloud Function v2 + Cloud Scheduler modules
+    ├── functions.tf                 # Cloud Function v2 + Cloud Scheduler module
     ├── IAM.tf                       # Service accounts, custom role, bindings, IAM propagation waits
-    ├── locals.tf                    # Shared locals (names, service account members, secret names and values)
-    ├── networking.tf                # VPC modules + VPC Peering
+    ├── monitoring.tf                # Uptime check, alert policies, email notification channel, dashboard
+    ├── locals.tf                    # Resource names (naming convention), network tags, secret names and values, paths behind IAP
+    ├── networking.tf                # VPC, subnets, firewall rules, Cloud Router and NAT (official modules)
     ├── outputs.tf                   # Load balancer IP, site URLs, certificate name
     ├── private_service_access.tf    # Private Service Access for Cloud SQL
     ├── secrets.tf                   # Secret Manager secrets and versions (password write-only)
-    ├── storage.tf                   # Backup, function source and statics buckets, uploads folder, function zip
+    ├── storage.tf                   # Uploads, backup and function source buckets, uploads folder, function zip
     ├── variables_*.tf               # Variables split by domain
     ├── scripts/
-    │   ├── startup-prod.sh          # MIG instance startup: fetch secrets, configure wp-config.php, mount uploads
-    │   └── startup-mgmt.sh          # Management VM startup: install Cloud SQL Auth Proxy
+    │   └── startup-prod.sh          # Instance startup: fetch secrets, configure wp-config.php (site address), mount uploads
     ├── functions/
     │   └── db-backup/
-    │       ├── main.py              # Cloud Function: snapshot and export backup logic
+    │       ├── main.py              # Cloud Function: database export
     │       └── requirements.txt
     └── modules/                     # Each module has a README generated with terraform-docs
         ├── cloud_scheduler/         # Cloud Scheduler job with OIDC auth and retry policy
-        ├── global_external_lb/      # Global IP, managed certificate, HTTPS and HTTP forwarding rules, backend service, firewall
-        ├── mig/                     # Instance template, Regional MIG, autoscaler, health check
-        └── networking/              # VPC, subnet, IAP firewall rule, Cloud Router, Cloud NAT
+        ├── global_external_lb/      # Load balancer, certificate, backend services (public and IAP) and bucket, Cloud CDN, Cloud Armor, firewall
+        └── mig/                     # Instance template, Regional MIG, autoscaler, health check
 ```
 
 ---
@@ -257,16 +371,24 @@ gcp-wordpress-blueprint/
 - A Google Cloud account with a billing account. The project itself is created in [Step 1](#step-1-create-the-gcp-project-and-enable-billing)
 - A GitHub account with this repository forked or cloned
 - A domain name whose DNS records you control (the managed certificate is issued for it)
+- The project in a Google Cloud organization, and `IAP_USER_EMAIL` an account of that organization. IAP protects the admin area with the Google-managed OAuth client, which only admits users of the project's organization; a personal account outside it gets IAP's access denied page. A project without an organization would need a custom OAuth client, which this project does not configure
 - [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (preinstalled in Cloud Shell)
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.15.7, only for the [Destroy](#destroy), which runs outside the pipeline. Check `terraform version` in Cloud Shell before using it
+- Only if the project is in an organization that enforces domain restricted sharing: `roles/orgpolicy.policyAdmin` on the organization, for [Step 5b](#step-5b-organization-policy-exception-only-if-the-project-is-in-an-organization). Owning the organization is not enough; grant it explicitly:
 
-The CI/CD pipeline runs entirely on **Cloud Build** with pinned versions (Terraform 1.15.7, Packer 1.16.1) — Terraform and Packer are not required locally to deploy.
+  ```bash
+  gcloud organizations add-iam-policy-binding ORG_ID \
+    --member="user:you@example.com" \
+    --role="roles/orgpolicy.policyAdmin"
+  ```
+
+The CI/CD pipeline runs entirely on **Cloud Build** with pinned versions (Terraform 1.15.7, Packer 1.16.1) — Terraform and Packer are not required locally to deploy. Every build step image is pinned to an exact tag and its digest (`cloud-sdk:592.0.0-slim`, `alpine:3.24.3`, `python:3.12.15-alpine3.24`, `hashicorp/terraform:1.15.7`): a floating tag such as `:slim` changes under the build without a commit, as it did on 2026-11-09, when the gcloud image dropped `python3`. An upgrade changes the tag and the digest together, in a pull request.
 
 ---
 
 ## Configuration
 
-Nothing in the repository holds values specific to one deployment except the domain. The rest comes from three places.
+Nothing in the repository holds values specific to one deployment except the domain. Resource names are not configuration: they are built from the environment (see [Naming Convention](#naming-convention)). The rest comes from three places.
 
 **Bootstrap variables**, exported in the shell before running `configs/setup.sh` ([Step 3](#step-3-set-the-deployment-variables)):
 
@@ -275,8 +397,10 @@ Nothing in the repository holds values specific to one deployment except the dom
 | `PROJECT_ID` | string | — (required) | GCP project to deploy into |
 | `REPO_NAME` | string | — (required) | GitHub repository the triggers watch |
 | `REPO_OWNER` | string | — (required) | GitHub user or organization that owns the repository |
-| `IAP_USER_EMAIL` | string | — (required) | Google account granted SSH access through IAP. Stored in the trigger substitutions |
+| `IAP_USER_EMAIL` | string | — (required) | Google account granted SSH and access to the WordPress admin area, both through IAP. Must be an account of the project's organization. Stored in the trigger substitutions |
+| `DOMAIN_NAMES` | string | — (required) | Domains of the site, comma separated (`example.com,www.example.com`). The first is the site address. Stored in the plan trigger substitutions |
 | `RESERVE_LB_IP` | string | `true` | `true` reserves a global IP for the load balancer outside Terraform. Must match `lb_use_reserved_ip` |
+| `ENVIRONMENT` | string | `prod` | Environment in the names of the load balancer IP and the triggers. Must match `environment` |
 
 **Cloud Build substitutions**, set on the triggers by `configs/setup.sh` or passed at run time:
 
@@ -284,25 +408,33 @@ Nothing in the repository holds values specific to one deployment except the dom
 |---|---|---|---|
 | `_PROJECT_ID` | string | — (required) | Project ID; becomes `TF_VAR_project_id` |
 | `_IAP_USER_EMAIL` | string | — (required) | Operator email; becomes `TF_VAR_iap_user_email` (plan pipeline) |
-| `_STATE_BUCKET` | string | — (required) | Bucket that holds the state and the saved plans, `<project_id>-wordpress-terraform-state` |
-| `_SAVE_PLAN` | string | `false` | `true` uploads the plan so it can be applied. Only `terraform-plan-main` sets it |
+| `_DOMAIN_NAMES` | string | — (required) | Domains, comma separated; becomes `TF_VAR_domain_names` (plan pipeline) |
+| `_STATE_BUCKET` | string | — (required) | Bucket that holds the state and the saved plans, `<project_id>-tfstate` |
+| `_SAVE_PLAN` | string | `false` | `true` uploads the plan so it can be applied. Only the plan trigger on `main` sets it |
 | `_PLAN_BUILD_ID` | string | — (required) | `BUILD_ID` of the plan to apply (apply pipeline) |
 | `_ALLOW_DESTRUCTIVE` | string | `false` | `true` lets the apply run a plan that destroys or replaces resources, except protected ones |
-| `_USE_IAP` | string | `true` | Packer reaches the build VM through IAP. `false` only for the first build, in the `default` network |
+| `_ENVIRONMENT` | string | `prod` | Selects the build subnet of the image build (Packer pipeline) |
+| `_USE_IAP` | string | `true` | The build VM runs in the build subnet and Packer reaches it through IAP. `false` only for the first build, in the `default` network |
 
 **Terraform variables.** Defined in `terraform/variables_*.tf`; their values are in [terraform/terraform.tfvars](terraform/terraform.tfvars), except `project_id` and `iap_user_email`, which the pipeline passes. The ones a deployer is most likely to change:
 
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `project_id` | `string` | — (required) | Passed by the pipeline from `_PROJECT_ID` |
-| `iap_user_email` | `string` | — (required) | Passed by the pipeline from `_IAP_USER_EMAIL`. Validated as an email address at plan time |
-| `domain_names` | `list(string)` | — (required) | Domains of the managed certificate. Set your own in `terraform.tfvars` |
+| `iap_user_email` | `string` | — (required) | Passed by the pipeline from `_IAP_USER_EMAIL`. Validated as an email address at plan time. Gets SSH through IAP and the admin area behind IAP |
+| `environment` | `string` | — (required) | `prod` in `terraform.tfvars`. `dev` or `prod`; part of every resource name |
+| `domain_names` | `string` | — (required) | Passed by the pipeline from `_DOMAIN_NAMES`. Domains served by the load balancer and included in the managed certificate, comma separated; any other `Host` gets a 403. The first one is the site address (`WP_HOME`, `WP_SITEURL`). Validated as lowercase hostnames at plan time |
 | `lb_use_reserved_ip` | `bool` | — (required) | `true` in `terraform.tfvars`: use the IP reserved by `setup.sh`. Must match `RESERVE_LB_IP` |
+| `waf_preview` | `bool` | — (required) | `true` in `terraform.tfvars`: the WAF rules only log. Set to `false` to enforce them |
 | `db_password_version` | `number` | — (required) | `1` in `terraform.tfvars`. Whole number, 1 or greater; raise it to [rotate the password](#rotate-the-database-password) |
+| `web_subnet_ip_cidr_range` | `string` | `"10.0.0.0/24"` | Range of the web subnet |
+| `build_subnet_ip_cidr_range` | `string` | `"10.0.1.0/28"` | Range of the build subnet |
 | `machine_type` | `string` | — (required) | `e2-standard-2` in `terraform.tfvars`. Machine type of the WordPress instances |
-| `min_replicas` / `max_replicas` | `number` | — (required) | `1` / `3` in `terraform.tfvars`. Autoscaler limits |
+| `min_replicas` / `max_replicas` | `number` | — (required) | `2` / `3` in `terraform.tfvars`. Autoscaler limits; at least 2 keeps the site up while one instance is replaced |
 | `instance_tier` | `string` | — (required) | `db-custom-2-4096` in `terraform.tfvars`, reduced for cost (production recommendation in the file: `db-custom-4-16384`) |
 | `instance_availability_type` | `string` | `"REGIONAL"` | Cloud SQL availability. `ZONAL` costs less and has no failover |
+
+The values of Cloud CDN, the login rate limit and the WAF rule sets are set in the call to the load balancer module in `terraform/compute.tf`, with the reasoning next to them.
 
 The region (`europe-west1`) is set in several places: `terraform.tfvars`, `configs/setup.sh` (state bucket) and the Packer trigger substitutions (`_ZONE`). Changing it means changing all of them.
 
@@ -354,18 +486,22 @@ cd gcp-wordpress-blueprint
 ```bash
 export REPO_NAME="gcp-wordpress-blueprint"
 export REPO_OWNER="your-github-username-or-org"
-export IAP_USER_EMAIL="you@example.com"     # Google account granted SSH access through IAP
+export IAP_USER_EMAIL="you@example.com"     # Account of the organization: SSH and admin area through IAP
+export DOMAIN_NAMES="wordpress.example.com" # Domains of the site, comma separated; the first is the site address
 export RESERVE_LB_IP="true"                 # reserve a static IP for the load balancer (see below)
 ```
 
-The script stops with an error if `PROJECT_ID` or any of the first three is missing.
+The script stops with an error if `PROJECT_ID` or any of the first four is missing. `ENVIRONMENT` defaults to `prod`.
 
-Set your domain in `terraform/terraform.tfvars`:
+The domains are not written in the repository, like the project ID and the operator email: `configs/setup.sh` stores them in the plan triggers as the `_DOMAIN_NAMES` substitution. A fork that runs the bootstrap without exporting `DOMAIN_NAMES` stops there, and a plan without it fails validation, instead of requesting a certificate for someone else's domain.
+
+In `terraform/terraform.tfvars`, set the IP mode:
 
 ```hcl
-domain_names       = ["wordpress.example.com"]
 lb_use_reserved_ip = true   # must match RESERVE_LB_IP
 ```
+
+The plan commands below separate their substitutions with `;` (the leading `^;^`, see `gcloud topic escaping`), because `_DOMAIN_NAMES` may hold commas.
 
 #### Step 4: Connect the GitHub repository to Cloud Build
 
@@ -384,14 +520,30 @@ bash configs/setup.sh
 
 This creates:
 - The APIs Terraform needs before it can enable the rest (`serviceusage`, `cloudresourcemanager`, `iam`, `cloudbuild`, `compute`)
-- Terraform state bucket (`PROJECT_ID-wordpress-terraform-state`) with versioning and 30-day plan artifact lifecycle
-- Cloud Build service account (`terraform-cloud-build`) with all required IAM roles
-- Four Cloud Build triggers: `packer-build`, `terraform-plan-pr`, `terraform-plan-main`, `terraform-apply`
-- With `RESERVE_LB_IP=true`, a global static IP for the load balancer (`wordpress-prod-lb-ip-global-external-lb`)
+- Terraform state bucket (`<project_id>-tfstate`) with versioning and 30-day plan artifact lifecycle
+- Cloud Build source bucket (`<project_id>_cloudbuild`), where `gcloud builds submit` uploads the local directory in Steps 6 to 8. The build reads it with the service account it runs as, so `terraform-plan-sa` and `packer-build-sa` get read access on it (`terraform-apply-sa` already has it). Triggers do not use it: they fetch the source from GitHub
+- The pipeline service accounts `terraform-plan-sa`, `terraform-apply-sa` and `packer-build-sa`, each with its roles (see [One Service Account per Pipeline Job](#one-service-account-per-pipeline-job))
+- Four Cloud Build triggers: `wp-blueprint-image-build-prod`, `wp-blueprint-tf-plan-pr-prod`, `wp-blueprint-tf-plan-main-prod`, `wp-blueprint-tf-apply-prod`
+- With `RESERVE_LB_IP=true`, a global static IP for the load balancer (`wp-blueprint-lb-ip-prod`)
 
 Before creating the triggers the script asks whether the repository is connected (Step 4). Answering anything but `y` skips the triggers.
 
 The script prints the reserved IP. **Create a DNS A record for your domain pointing to it now**: the certificate cannot be issued until that record resolves, so the sooner it propagates the better.
+
+#### Step 5b: Organization policy exception (only if the project is in an organization)
+
+Organizations created since May 2024 enforce **domain restricted sharing** (`iam.allowedPolicyMemberDomains`) by default: roles can only be granted to identities of the organization. The load balancer reads the private uploads bucket with a Google-managed service agent, `service-<project_number>@https-lb.iam.gserviceaccount.com`, which is not one of them, so the first apply fails on its binding with *"One or more users named in the policy do not belong to a permitted customer"*. A project without an organization inherits no such policy and can skip this step.
+
+```bash
+bash configs/org-policy-exception.sh
+```
+
+The legacy constraint accepts no exceptions for single principals, so the script replaces it in this project only:
+
+1. It enforces the managed constraint `iam.managed.allowedPolicyMembers`, allowing your organization plus that service agent.
+2. Then it resets the legacy constraint to its default. The managed one goes first, so the project is never left without the restriction.
+
+The restriction stays the same, with one named exception. The script does nothing when the project has no organization or the constraint is not enforced, asks to type the project ID before changing anything, and shows both effective policies at the end; the legacy one must show `allowAll: true`. Changes can take up to 15 minutes to apply, so wait before Step 7. It needs `roles/orgpolicy.policyAdmin` on the organization (see [Prerequisites](#prerequisites)).
 
 ---
 
@@ -399,19 +551,19 @@ The script prints the reserved IP. **Create a DNS A record for your domain point
 
 #### Step 6: Build the golden image (Packer)
 
-Manually submit the Packer build (Cloud Build trigger fires automatically on future pushes to `packer/**`):
+Manually submit the Packer build (the image build trigger fires automatically on future pushes to `packer/**`):
 
 ```bash
 gcloud builds submit \
   --project=$PROJECT_ID \
   --config=cloudbuild/packer.yaml \
-  --substitutions="_PROJECT_ID=$PROJECT_ID,_ZONE=europe-west1-b,_NETWORK=default,_SUBNETWORK=default,_USE_IAP=false" \
-  --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
+  --substitutions="_PROJECT_ID=$PROJECT_ID,_ZONE=europe-west1-b,_ENVIRONMENT=prod,_USE_IAP=false" \
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/packer-build-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
-> **Note:** This first build is the one exception to the "no public IPs" rule. The management VPC, its IAP firewall rule and the IAP API are created by Terraform, and Terraform needs the image to exist first. So the first build runs in the `default` network with `_USE_IAP=false`: the temporary build VM gets an external IP and Packer connects to it over SSH directly. The VM is deleted when the build ends.
+> **Note:** This first build is the one exception to the "no public IPs" rule. The production VPC and its build subnet are created by Terraform, and Terraform needs the image to exist first. So the first build runs in the `default` network with `_USE_IAP=false`: the temporary build VM gets an external IP for a few minutes, and Packer connects to it over SSH directly. The VM is deleted when the build ends.
 >
-> Every later build runs from the `packer-build` trigger with `_USE_IAP=true`: the build VM is created in `wordpress-mgmt-vpc` with no external IP and Packer connects through an IAP tunnel.
+> Every later build runs from the image build trigger with `_USE_IAP=true`: the build VM is created in `build-subnet-prod-europe-west1` with no external IP, and Packer connects through an IAP tunnel.
 
 #### Step 7: Generate the Terraform plan
 
@@ -419,13 +571,13 @@ gcloud builds submit \
 gcloud builds submit \
   --project=$PROJECT_ID \
   --config=cloudbuild/terraform-plan.yaml \
-  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-wordpress-terraform-state,_IAP_USER_EMAIL=$IAP_USER_EMAIL,_SAVE_PLAN=true" \
-  --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
+  --substitutions="^;^_PROJECT_ID=$PROJECT_ID;_STATE_BUCKET=${PROJECT_ID}-tfstate;_IAP_USER_EMAIL=$IAP_USER_EMAIL;_DOMAIN_NAMES=$DOMAIN_NAMES;_SAVE_PLAN=true" \
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-plan-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
 `_SAVE_PLAN=true` uploads the plan so it can be applied. The build output ends with the `BUILD_ID`. Copy it — you will need it in the next step.
 
-> The plan is saved to `gs://PROJECT_ID-wordpress-terraform-state/plans/BUILD_ID/`.
+> The plan is saved to `gs://<project_id>-tfstate/plans/BUILD_ID/`.
 > Review `plan.txt` before applying.
 
 #### Step 8: Apply the plan
@@ -436,8 +588,8 @@ Replace `PLAN_BUILD_ID` with the ID from Step 7:
 gcloud builds submit \
   --project=$PROJECT_ID \
   --config=cloudbuild/terraform-apply.yaml \
-  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-wordpress-terraform-state,_PLAN_BUILD_ID=PLAN_BUILD_ID" \
-  --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
+  --substitutions="_PROJECT_ID=$PROJECT_ID,_STATE_BUCKET=${PROJECT_ID}-tfstate,_PLAN_BUILD_ID=PLAN_BUILD_ID" \
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/terraform-apply-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
 Once the apply completes, the last step prints the Terraform outputs: `load_balancer_ip`, `site_urls` and `ssl_certificate_name`.
@@ -459,23 +611,45 @@ gcloud compute ssl-certificates describe SSL_CERTIFICATE_NAME \
 | `ACTIVE` | Issued. The site is available at the URLs in `site_urls` |
 | `FAILED_NOT_VISIBLE` | Google does not see the DNS record pointing to the load balancer IP |
 
+Until the certificate is `ACTIVE` and WordPress is installed, the uptime check fails and the uptime alert emails `IAP_USER_EMAIL` (see [Monitoring and Alerting](#monitoring-and-alerting)); it closes by itself once the home page answers.
+
+**Install WordPress through IAP.** Once the certificate is `ACTIVE`, open `https://<domain>/` signed in with the Google account of `IAP_USER_EMAIL`. A fresh site redirects to `/wp-admin/install.php`, which is behind IAP: any other account gets IAP's access denied page, so nobody else can complete the installer. Complete it with an admin username other than `admin` and a strong password. The installer is in English, because `DISALLOW_FILE_MODS` turns off its language chooser; choose the site language afterwards in *Settings → General → Site Language*, which lists the ten languages in the image.
+
+**Run the smoke tests** with the `load_balancer_ip` output. The script only sends HTTP requests and changes nothing; it exits with 1 if any check fails:
+
+```bash
+bash tests/smoke/edge-security.sh <domain> <load_balancer_ip>
+```
+
+It checks that unknown hosts get a 403, that the admin area and the login lead to the IAP sign-in, that path variants which would skip IAP are blocked, that `admin-ajax.php` is still public, that `/server-status` answers 403, and that HTTP redirects to HTTPS. The expected result of each request, and the manual checks that need a browser, are in [docs/test-procedure.md](docs/test-procedure.md).
+
+#### Step 9 (optional): Delete the default network
+
+The `default` network is only used by the first image build. It comes with open firewall rules, among them `default-allow-ssh`, which opens port 22 to the internet. Once the first apply has finished, remove it:
+
+```bash
+bash configs/delete-default-network.sh
+```
+
+The script asks to type the project ID, deletes the firewall rules of the network and then the network, and does nothing if it no longer exists. After this, `_USE_IAP=false` no longer works in this project: every image build runs in the build subnet.
+
 ---
 
 ### CI/CD flow (ongoing changes)
 
 What is deployed always comes from `main`: a pull request is reviewed with a plan, but only the plan generated after the merge can be applied.
 
-| Event | Trigger | What runs |
-|---|---|---|
-| Pull Request targeting `main` | `terraform-plan-pr` (automatic) | `cloudbuild/terraform-plan.yaml` — plan for review. Not saved, cannot be applied |
-| Push to `main` with changes in `terraform/**` | `terraform-plan-main` (automatic) | `cloudbuild/terraform-plan.yaml` — same plan, saved to the state bucket |
-| Manual run after reviewing the saved plan | `terraform-apply` (manual, requires approval) | `cloudbuild/terraform-apply.yaml` — destructive change check, then apply |
-| Push to `main` with changes in `packer/**` | `packer-build` (automatic) | `cloudbuild/packer.yaml` — builds a new golden image |
+| Event | Trigger | Service account | What runs |
+|---|---|---|---|
+| Pull Request targeting `main` | `wp-blueprint-tf-plan-pr-prod` (automatic) | `terraform-plan-sa` | `cloudbuild/terraform-plan.yaml` — plan for review. Not saved, cannot be applied |
+| Push to `main` with changes in `terraform/**` | `wp-blueprint-tf-plan-main-prod` (automatic) | `terraform-plan-sa` | `cloudbuild/terraform-plan.yaml` — same plan, saved to the state bucket |
+| Manual run after reviewing the saved plan | `wp-blueprint-tf-apply-prod` (manual, requires approval) | `terraform-apply-sa` | `cloudbuild/terraform-apply.yaml` — destructive change check, then apply |
+| Push to `main` with changes in `packer/**` | `wp-blueprint-image-build-prod` (automatic) | `packer-build-sa` | `cloudbuild/packer.yaml` — builds a new golden image |
 
-**To apply the plan generated on `main`**, use the `BUILD_ID` of the `terraform-plan-main` run:
+**To apply the plan generated on `main`**, use the `BUILD_ID` of the plan run on `main`:
 
 ```bash
-gcloud beta builds triggers run terraform-apply \
+gcloud beta builds triggers run wp-blueprint-tf-apply-prod \
   --project=$PROJECT_ID \
   --branch=main \
   --substitutions=_PLAN_BUILD_ID=PLAN_BUILD_ID_FROM_MAIN
@@ -483,7 +657,7 @@ gcloud beta builds triggers run terraform-apply \
 
 A saved plan goes stale as soon as the state changes: if two pull requests are merged in a row, Terraform only accepts the most recent plan.
 
-> **Note:** a merge that changes both `packer/**` and `terraform/**` starts `packer-build` and `terraform-plan-main` at the same time. That plan resolves the image before the new one exists. Do not apply it: wait for the image build and run `terraform-plan-main` by hand, as in [Update the WordPress image](#update-the-wordpress-image).
+> **Note:** a merge that changes both `packer/**` and `terraform/**` starts the image build and the plan on `main` at the same time. That plan resolves the image before the new one exists. Do not apply it: wait for the image build and run the plan on `main` by hand, as in [Update the WordPress image](#update-the-wordpress-image).
 
 #### Destructive changes
 
@@ -494,12 +668,12 @@ Both plan triggers list every resource the plan would destroy or replace, withou
 | No destroy or replace | Applies |
 | Replace of an instance template, an IAM binding or the function source zip | Applies — routine, no data involved |
 | Any other destroy or replace | Rejected unless `_ALLOW_DESTRUCTIVE=true` is passed |
-| Destroy or replace of the Cloud SQL instance, its database, the backup bucket or the statics bucket | Always rejected |
+| Destroy or replace of the Cloud SQL instance, its database, the backup bucket or the uploads bucket | Always rejected |
 
 To apply a plan with destructive changes after reviewing them:
 
 ```bash
-gcloud beta builds triggers run terraform-apply \
+gcloud beta builds triggers run wp-blueprint-tf-apply-prod \
   --project=$PROJECT_ID \
   --branch=main \
   --substitutions=_PLAN_BUILD_ID=PLAN_BUILD_ID_FROM_MAIN,_ALLOW_DESTRUCTIVE=true
@@ -513,7 +687,7 @@ The protected resources are listed in [cloudbuild/scripts/check_destructive.py](
 
 The pipeline cannot destroy the environment: the database and the data buckets are protected. Tear it down from Cloud Shell. [configs/destroy.sh](configs/destroy.sh) holds the gcloud steps that `terraform destroy` needs around it; it asks to type the project ID before changing anything.
 
-First empty the backup and statics buckets. They keep `force_destroy = false` on purpose, so Terraform refuses to delete them while they hold objects, and their content is created by Cloud SQL and by WordPress, not by Terraform. This deletes the database exports and the uploads for good, all versions included:
+First empty the backup and uploads buckets. They keep `force_destroy = false` on purpose, so Terraform refuses to delete them while they hold objects, and their content is created by Cloud SQL and by WordPress, not by Terraform. This deletes the database exports and the uploads for good, all versions included:
 
 ```bash
 bash configs/destroy.sh empty-buckets
@@ -524,9 +698,10 @@ Then run the destroy (Terraform >= 1.15.7, see [Prerequisites](#prerequisites)):
 ```bash
 cd terraform
 mkdir -p tmp
-terraform init -backend-config="bucket=${PROJECT_ID}-wordpress-terraform-state"
+terraform init -backend-config="bucket=${PROJECT_ID}-tfstate"
 export TF_VAR_project_id=$PROJECT_ID
 export TF_VAR_iap_user_email=$IAP_USER_EMAIL
+export TF_VAR_domain_names=$DOMAIN_NAMES
 terraform destroy
 ```
 
@@ -540,7 +715,7 @@ terraform destroy
 `terraform destroy` does not release the reserved load balancer IP, because it is not managed by Terraform. Keep it to redeploy later without touching DNS, or release it to stop paying for it:
 
 ```bash
-gcloud compute addresses delete wordpress-prod-lb-ip-global-external-lb \
+gcloud compute addresses delete wp-blueprint-lb-ip-prod \
   --project=$PROJECT_ID \
   --global
 ```
@@ -554,13 +729,9 @@ gcloud compute addresses delete wordpress-prod-lb-ip-global-external-lb \
 ### SSH access via IAP
 
 ```bash
-# Management VM
-gcloud compute ssh wordpress-mgmt-vm \
-  --zone=europe-west1-b \
-  --project=$PROJECT_ID \
-  --tunnel-through-iap
+# A WordPress instance of the MIG (wp-blueprint-web-prod-xxxx)
+gcloud compute instances list --project=$PROJECT_ID --filter="name~^wp-blueprint-web-prod"
 
-# Production instance (MIG)
 gcloud compute ssh INSTANCE_NAME \
   --zone=ZONE \
   --project=$PROJECT_ID \
@@ -570,30 +741,71 @@ gcloud compute ssh INSTANCE_NAME \
 ### Trigger a manual backup
 
 ```bash
-# Snapshot (fast, seconds)
-gcloud functions call wordpress-fn-db-backup-prod \
-  --region=europe-west1 \
-  --project=$PROJECT_ID \
-  --data='{"type": "snapshot"}'
-
-# Export to GCS (full SQL dump)
-gcloud functions call wordpress-fn-db-backup-prod \
+# Export to Cloud Storage (full SQL dump)
+gcloud functions call wp-blueprint-db-backup-fn-prod \
   --region=europe-west1 \
   --project=$PROJECT_ID \
   --data='{"type": "export"}'
 ```
 
-View snapshots:
-
-```bash
-gcloud sql backups list --instance=wordpress-prod-db --project=$PROJECT_ID
-```
-
 View exports:
 
 ```bash
-gcloud storage ls gs://wordpress-db-backups-${PROJECT_ID}/exports/
+gcloud storage ls gs://${PROJECT_ID}-db-backups/exports/
 ```
+
+View the automated backups that point-in-time recovery is based on:
+
+```bash
+gcloud sql backups list --instance=wp-blueprint-db-prod --project=$PROJECT_ID
+```
+
+### Database maintenance
+
+Google applies Cloud SQL maintenance updates (database engine, operating system) with a restart: under 60 seconds of downtime on Enterprise edition, which this project uses. High availability does not avoid it: Google states that HA instances have the same downtime during maintenance. The window is set in [terraform/database.tf](terraform/database.tf): Sunday, 04:00 to 05:00 UTC, after the 02:00 backup, with `update_track = "stable"` ("Week 2" in the console), so an update comes 15 to 21 days after its notice.
+
+**Notice by email.** Set per user, not by Terraform: in the console, *User preferences → Communication*, turn on the Cloud SQL maintenance notifications. The notice arrives at least a week before the update. Upcoming maintenance:
+
+```bash
+gcloud sql instances describe wp-blueprint-db-prod \
+  --project=$PROJECT_ID \
+  --format="yaml(scheduledMaintenance)"
+```
+
+**Reschedule one update.** To the next window, or to a given time (UTC):
+
+```bash
+gcloud sql reschedule-maintenance wp-blueprint-db-prod \
+  --project=$PROJECT_ID \
+  --reschedule-type=SPECIFIC_TIME \
+  --schedule-time=2026-11-15T04:00:00Z
+```
+
+`--reschedule-type=NEXT_AVAILABLE_WINDOW` moves it to the next window, and `IMMEDIATE` applies it now.
+
+**Block maintenance for a period** (a launch, a sale), from 1 to 90 days. A `deny_maintenance_period` block in the `settings` of [terraform/database.tf](terraform/database.tf), deployed through a pull request like any other change:
+
+```hcl
+deny_maintenance_period {
+  start_date = "2026-11-20"
+  end_date   = "2026-12-05"
+  time       = "00:00:00"
+}
+```
+
+**Apply an update earlier,** at a time chosen by the operator (self-service maintenance). The instance restarts, and there is no rollback to the previous version:
+
+```bash
+gcloud sql instances describe wp-blueprint-db-prod \
+  --project=$PROJECT_ID \
+  --format="value(availableMaintenanceVersions)"
+
+gcloud sql instances patch wp-blueprint-db-prod \
+  --project=$PROJECT_ID \
+  --maintenance-version=VERSION
+```
+
+**Production option: Enterprise Plus.** Maintenance takes under a second of downtime on Enterprise Plus edition. It needs `instance_edition = "ENTERPRISE_PLUS"` and a tier of its machine series (for example `db-perf-optimized-N-2`), and costs more. Not used here for cost.
 
 ### Rotate the database password
 
@@ -605,7 +817,7 @@ db_password_version = 2
 
 The plan generated on `main` then shows three changes:
 
-- A new version of the `wordpress-db-password` secret, with a newly generated password.
+- A new version of the `wp-blueprint-db-password-prod` secret, with a newly generated password.
 - The Cloud SQL user updated with that password.
 - The instance template replaced, because the version number is part of the instance metadata. The MIG replaces the instances, and the new ones read the new password at boot.
 
@@ -616,17 +828,64 @@ This is not a zero-downtime rotation: between the moment the password changes in
 ### Update the WordPress image
 
 1. Modify provisioning scripts in `packer/scripts/`
-2. Merge to `main` — the `packer-build` trigger fires automatically and registers a new image under the `wordpress-golden` family (about 5 minutes; 4 min 22 s measured on 2026-10-11)
+2. Merge to `main` — the image build trigger fires automatically and registers a new image under the `wp-blueprint-web` family (about 5 minutes; 4 min 22 s measured on 2026-10-11)
 3. When the build has finished, generate a plan. A change in `packer/**` alone does not trigger one:
 
    ```bash
-   gcloud builds triggers run terraform-plan-main \
+   gcloud builds triggers run wp-blueprint-tf-plan-main-prod \
      --project=$PROJECT_ID \
      --branch=main
    ```
 
    The plan shows the instance template being replaced with the new image.
-4. Apply that plan with `terraform-apply` — the MIG rolling update replaces the instances. An instance template replacement does not need `_ALLOW_DESTRUCTIVE=true`
+4. Apply that plan with the apply trigger — the MIG rolling update replaces the instances. An instance template replacement does not need `_ALLOW_DESTRUCTIVE=true`
+
+**A new WordPress version, or another language.** The versions and locales are set at the top of the download block in `packer/scripts/install.sh` (`WP_VERSION`, `THEME_VERSION`, `CORE_LOCALES`, `THEME_LOCALES`). After changing them, regenerate the checksums from the repository root and commit both files in the same pull request:
+
+```bash
+bash packer/scripts/update-checksums.sh
+```
+
+The script checks the WordPress archive against the SHA1 that WordPress publishes and stops if it does not match, checks that `THEME_VERSION` is the version of the theme bundled in that release, and rewrites `packer/scripts/checksums.sha256`. Language packs for a new release are published some days after it; until then the script stops on the missing locale. WordPress.org also rebuilds a language pack when its translations change, without a new version: the image build then fails on that file's checksum, and the new pack is reviewed and its line updated with the same script.
+
+### Admin access
+
+The admin area and the login are behind IAP: only principals with `roles/iap.httpsResourceAccessor` on the backend service `wp-blueprint-lb-backend-iap-prod` reach them. Today that is the operator account, `IAP_USER_EMAIL`, the same one that has SSH through IAP. To change it, change the `_IAP_USER_EMAIL` substitution of the two plan triggers and deploy; to grant access to more people, the binding should go to a Google group instead (task T46 in [docs/to-do.md](docs/to-do.md)). Who has access now:
+
+```bash
+gcloud iap web get-iam-policy \
+  --resource-type=backend-services \
+  --service=wp-blueprint-lb-backend-iap-prod \
+  --project=$PROJECT_ID
+```
+
+Signing in to WordPress is still needed after IAP: IAP decides who reaches the login, and WordPress who is an administrator.
+
+### Remove an upload from the cache
+
+A deleted or overwritten upload keeps being served by Cloud CDN until its TTL ends, an hour at most. To remove it at once, for example after an urgent takedown, invalidate its path:
+
+```bash
+gcloud compute url-maps invalidate-cdn-cache wp-blueprint-lb-url-map-prod \
+  --path="/wp-content/uploads/2026/10/photo.jpg" \
+  --project=$PROJECT_ID \
+  --global
+```
+
+Browsers that already have the file keep their copy up to an hour: their cache cannot be invalidated from outside.
+
+### Review and enforce the WAF rules
+
+The preconfigured WAF rules run in preview: they log what they would block, without blocking it. The load balancer logs record every request with Cloud Armor's decision. To see the requests a WAF rule would have denied:
+
+```bash
+gcloud logging read \
+  'resource.type="http_load_balancer" AND jsonPayload.previewSecurityPolicy.outcome="DENY"' \
+  --project=$PROJECT_ID \
+  --limit=50
+```
+
+Each entry has the rule that matched (`previewSecurityPolicy.priority`) and the signatures that fired (`preconfiguredExprIds`). A match on normal use of the site, typically in the admin area, is a false positive. Excluding a single signature takes an opt-out in the rule expression, which the load balancer module does not support yet; until then, a rule set that keeps producing false positives is removed from `waf_rule_sets` in `terraform/compute.tf`. When the matches left are real attacks, set `waf_preview = false` in `terraform/terraform.tfvars` and deploy it like any other change. The fields of these logs, including the outcomes of the login rate limit (`RATE_LIMIT_THRESHOLD_EXCEED`, `BAN_THRESHOLD_EXCEED`), are described in [Cloud Armor per-request logging](https://docs.cloud.google.com/armor/docs/request-logging).
 
 ---
 
@@ -634,29 +893,38 @@ This is not a zero-downtime rotation: between the moment the password changes in
 
 | Module | Description |
 |---|---|
-| `modules/networking` | VPC network, subnet, IAP SSH firewall rule, Cloud Router, Cloud NAT. All feature flags (`enable_nat`, `allow_ssh_from_iap`) are passed by the caller with no module-level defaults. |
+| `terraform-google-modules/network/google` | Google's official module, pinned to an exact version: the production VPC, its web and build subnets, and the network firewall rules |
+| `terraform-google-modules/cloud-router/google` | Google's official module, pinned to an exact version: Cloud Router and Cloud NAT |
 | `modules/mig` | Instance template (Packer golden image), Regional MIG with distribution policy, global health check for auto-healing, and regional autoscaler with scale-in controls. |
-| `modules/global_external_lb` | Global external Application Load Balancer: IP address (created or reserved beforehand), Google-managed SSL certificate, SSL policy, HTTPS forwarding rule, HTTP forwarding rule that redirects to HTTPS, backend service wired to the MIG, health check, and the firewall rule that lets the Google front ends reach the backends. |
-| `modules/cloud_scheduler` | Cloud Scheduler job with OIDC-authenticated HTTP target, configurable retry policy, and cron schedule. Reused for both export and snapshot backup jobs. |
+| `modules/global_external_lb` | Global external Application Load Balancer: IP address (created or reserved beforehand), Google-managed SSL certificate, SSL policy, HTTPS and HTTP (redirect) forwarding rules, URL map that serves only the given domains, backend service wired to the MIG with Cloud CDN and request logs, an optional second backend service on the same MIG behind IAP for the given paths, backend bucket for the uploads with Private Bucket Access, one Cloud Armor security policy per backend service, health check, and the firewall rule that lets the Google front ends reach the backends. Every name is built as `<name_prefix>-<component>-<environment>`. |
+| `modules/cloud_scheduler` | Cloud Scheduler job with OIDC-authenticated HTTP target, configurable retry policy, and cron schedule. |
 
 ---
 
 ## Security Highlights
 
-- No VM has a public IP address
+- No instance has a public IP address; the only exception is the build VM of the very first image build, for a few minutes
 - HTTPS only: Google-managed certificate, HTTP redirected to HTTPS, TLS 1.2 minimum
+- The admin area and the login only through IAP, for the operator's Google account; any variant of those paths that would skip IAP is blocked by Cloud Armor. The installer is never exposed
+- Only the site's own domains are served: any other `Host` header gets a 403, and WordPress takes its address from configuration, never from the request
+- Cloud Armor in front of the instances: `xmlrpc.php` blocked, login attempts rate limited and banned per IP, OWASP CRS 4.22 WAF rules (in preview until reviewed)
+- Application passwords disabled, so the REST API cannot be authenticated around IAP
+- WordPress and its language packs downloaded at pinned versions and checked against committed SHA256 values before they are extracted; Packer, Terraform and the Packer plugin pinned too
 - Backends accept traffic only from the Google front end ranges, not from the internet
-- Cloud SQL is accessible only via private IP within the VPC
+- The uploads bucket is private: its objects are read only through the load balancer (Private Bucket Access), and public access prevention stays enforced
+- Cloud SQL is accessible only via private IP within the VPC, and the build VM is denied any traffic to its range
 - SSH access exclusively through IAP (no open port 22 to the internet)
 - Database credentials stored in Secret Manager. The password is never in the repository, the Terraform state or a saved plan; on an instance it exists only in `wp-config.php`, written at boot by the startup script
-- `project_id` and the operator email are not written in the code or the configuration — they are passed as Cloud Build substitutions (`TF_VAR_project_id`, `TF_VAR_iap_user_email`), so the repository deploys to any project without being edited. The project ID is an identifier, not a credential, and appears in the screenshots below
-- Cloud SQL instance has `deletion_protection` and `prevent_destroy` set to `false` for portfolio teardown convenience (set to `true` in production)
-- One service account per workload (management VM, WordPress instances, backup function runtime and build, scheduler), none with keys. Some roles are still broader than needed (see [Known Limitations](#known-limitations))
-- Instances reach the statics bucket with their own service account, scoped to that bucket
+- `project_id`, the operator email and the domains are not written in the code or the configuration — they are passed as Cloud Build substitutions (`TF_VAR_project_id`, `TF_VAR_iap_user_email`, `TF_VAR_domain_names`), so the repository deploys to any project without being edited, and a fork cannot request a certificate for someone else's domain by mistake. The project ID is an identifier, not a credential, and appears in the screenshots below
+- One service account per pipeline job: pull request plans run with a read-only account, so code in a pull request cannot write anything; only the approved apply can
+- The Packer build VM runs without a service account, so nothing in it can use Google credentials
+- One service account per workload (WordPress instances, backup function runtime and build, scheduler), none with keys. Some roles are still broader than needed (see [Known Limitations](#known-limitations))
+- Instances reach the uploads bucket with their own service account, scoped to that bucket
 - Secrets are readable by the WordPress instances one by one, not project-wide
 - Custom IAM role for the backup function with only the required Cloud SQL permissions
 - The destructive change check blocks the apply from destroying the database or the data buckets, even with `_ALLOW_DESTRUCTIVE=true`
 - Every bucket has uniform bucket-level access and public access prevention enforced, set once in `locals.tf`
+- Cloud SQL instance has `deletion_protection` and `prevent_destroy` set to `false` for portfolio teardown convenience (set to `true` in production)
 
 ---
 
@@ -664,18 +932,33 @@ This is not a zero-downtime rotation: between the moment the password changes in
 
 What the code does not do yet, tracked in [docs/to-do.md](docs/to-do.md):
 
-- **Management VM without database access.** VPC peering is not transitive, so the management VM cannot reach the private IP of Cloud SQL through the production VPC; the Auth Proxy also runs without `--private-ip`, its service account cannot read the secret it fetches, and the VM boots from the WordPress image. The Auth Proxy download is pinned to a version but not verified with a checksum.
-- **Snapshot backups have no retention.** The on-demand backups taken every 4 hours are never deleted.
-- **IAM is not fully least-privilege.** The management VM has `roles/cloudsql.editor` on the project, and the Cloud SQL service account has `roles/storage.admin` on the backup bucket where writing objects would be enough.
-- **A single instance at rest** (`min_replicas = 1`): no zone-level fault tolerance, see [Regional MIG](#regional-mig-over-unmanaged-instance-group).
-- **WordPress version not pinned.** The image build downloads the latest release from wordpress.org without a checksum.
+- **No administrative access to the database.** With the management VM removed there is no path for an operator to run SQL: the database is only reachable from the instances, and the image has no MySQL client. The fix is either Cloud SQL Studio, with Data API access enabled on the instance, or an ephemeral VM running the Cloud SQL Auth Proxy, reached through IAP.
+- **The instances do not verify the IAP signed header.** Google recommends that an application behind IAP verify the JWT IAP adds (`x-goog-iap-jwt-assertion`), as a backstop if a request ever reaches it without going through IAP. Here that backstop is a Cloud Armor rule on the public backend, which blocks any path containing a protected one; it depends on the path being decoded and normalized as expected, which the smoke tests check.
+- **Admin access through one user account.** IAP and SSH go to `IAP_USER_EMAIL`, not to a group, and IAP only admits accounts of the project's organization.
+- **WAF rules in preview.** They log but do not block until their matches are reviewed (see [Review and enforce the WAF rules](#review-and-enforce-the-waf-rules)).
+- **Restore partly tested.** A point-in-time restore to a new instance works: the clone holds the `wordpress` database (verification of 2026-11-11). WordPress reading the restored data, and a restore from an export, are not tested yet (to-do T33).
+- **IAM is not fully least-privilege.** The apply service account holds broad admin roles, and the Cloud SQL service account has `roles/storage.admin` on the backup bucket where writing objects would be enough.
 - **The password rotation is not zero-downtime**, see [Rotate the database password](#rotate-the-database-password).
 
 ---
 
 ## Screenshots
 
-Taken from a deploy from scratch of this repository.
+From the verification deploy from scratch of 2026-11-11 ([docs/devlogs/devlog-2026-11-11-verification.md](docs/devlogs/devlog-2026-11-11-verification.md)), except the two WordPress screenshots, from 2026-10-11.
+
+### Edge security
+
+**Smoke tests.** [tests/smoke/edge-security.sh](tests/smoke/edge-security.sh) against the deployed site: unknown hosts rejected, the admin area and the login only through IAP, path variants that would skip IAP blocked or normalized to a path behind IAP, `admin-ajax.php` and the uploads public, `xmlrpc.php` and `/server-status` closed, HTTP redirected to HTTPS.
+
+![Smoke tests](docs/screenshots/smoke-test.png)
+
+**Cloud Armor — Policies.** One policy per backend service: the public one with the host, `xmlrpc.php`, protected path and WAF rules, and the one behind IAP with the host rule and the login rate limit.
+
+![Cloud Armor policies](docs/screenshots/cloud-armor-policies.png)
+
+**TLS 1.1 is rejected.** The client offers TLS 1.1 (allowed on the client with `DEFAULT@SECLEVEL=0`, which OpenSSL 3 disables by default) and the load balancer answers with a `protocol version` alert (`(IN)`: sent by the server). Its SSL policy accepts TLS 1.2 and later only.
+
+![TLS 1.1 rejected](docs/screenshots/tls1.1-rejected.png)
 
 ### CI/CD
 
@@ -683,51 +966,81 @@ Taken from a deploy from scratch of this repository.
 
 ![Cloud Build triggers](docs/screenshots/gcb-triggers.png)
 
-**Cloud Build — Plan and apply.** A plan generated on `main` by `terraform-plan-main`, the apply of that plan by `terraform-apply`, and the build of the backup function that the apply starts in `europe-west1`.
+**Cloud Build — First deploy.** The first image build (8 min 18 s), the plan, the apply, and the build of the backup function that the apply starts in `europe-west1`.
 
-![Cloud Build history with a successful plan and apply](docs/screenshots/plan-apply-success.png)
+![Cloud Build history with the image build, plan and apply](docs/screenshots/packer-tfplan-tfapply-success.png)
+
+**Image build in the build subnet.** The temporary Packer VM of a build from the trigger, in `build-subnet-prod-europe-west1`, reached through IAP.
+
+![Packer VM in the build subnet](docs/screenshots/packer-vm-custom-subnet.png)
+
+**Rolling update to a new image.** After a new image, the MIG creates two instances from the new template before deleting the old two. No `_ALLOW_DESTRUCTIVE` needed.
+
+![MIG rolling update](docs/screenshots/mig-rolling-update-success.png)
+
+**Default network removed.** `configs/delete-default-network.sh` after the first apply: the `default` network and its open firewall rules, used only by the first image build.
+
+![Default network removal](docs/screenshots/delete-default-network-script.png)
 
 ### Compute
 
-**Compute Engine — VM instances.** The management VM and a WordPress instance of the MIG. Neither has an external IP.
+**Compute Engine — VM instances.** Two WordPress instances of the MIG, in two zones, without external IPs.
 
 ![VM instances](docs/screenshots/vm-instances.png)
 
-**Load balancer — Healthy backend.** The MIG as backend of the load balancer. An instance counts as healthy only after its startup script has finished configuring it.
+**Load balancer — Healthy backend.** The MIG as backend, 2 of 2 healthy. An instance counts as healthy only after its startup script has finished configuring it.
 
 ![Healthy backend](docs/screenshots/healthy-backend.png)
 
 ### Data
 
-**Cloud SQL — Instance.**
+**Cloud SQL — Instance.** MySQL 8.4, Enterprise edition, without a public IP.
 
 ![Cloud SQL instance](docs/screenshots/cloudsql-instance.png)
 
-**Secret Manager — Secrets.**
+**Secret Manager — Secrets.** The database settings read by the instances at boot. The password is never in the Terraform state.
 
 ![Secret Manager secrets](docs/screenshots/secrets.png)
 
-**Cloud Scheduler — Backup jobs.** The export and snapshot jobs after a successful run.
+**Cloud Scheduler — Export job.** The daily export, at midnight `Europe/Paris`, after a successful run.
 
-![Cloud Scheduler backup jobs](docs/screenshots/scheduler-jobs-success.png)
+![Cloud Scheduler export job](docs/screenshots/scheduler-jobs-success.png)
 
-**Cloud Storage — Uploads in the statics bucket.** A file uploaded from WordPress, stored under `uploads/` in the bucket that every instance mounts with Cloud Storage FUSE.
+**Export file.** A manual run of the job, and the SQL file it leaves in the backup bucket.
 
-![Uploaded file in the statics bucket](docs/screenshots/static-objects-upload.png)
+![Export file in the backup bucket](docs/screenshots/export-job-success.png)
 
-### HTTPS
+**Cloud Storage — Uploads.** A file uploaded from WordPress, stored under `wp-content/uploads/` so that the object path equals the URL path the backend bucket serves.
 
-**HTTP redirects to HTTPS.** A request on port 80 is answered with a 301 to the HTTPS URL.
+![Uploaded file in the bucket](docs/screenshots/static-objects-upload.png)
 
-![HTTP to HTTPS redirect](docs/screenshots/https-redirection.png)
+### Resilience
 
-**TLS 1.1 is rejected.** The SSL policy of the load balancer accepts TLS 1.2 and later only.
+**Cloud SQL failover.** [tests/resilience/sql-failover.sh](tests/resilience/sql-failover.sh): the primary moves to the standby zone with the same private IP, and the site is down for 21 s in this run (10 s in the first). The `000` are requests that hung while WordPress connected to the old primary.
 
-![TLS 1.1 rejected](docs/screenshots/old-tls-versions-forbidden.png)
+![Cloud SQL failover test](docs/screenshots/sql-failover.png)
+
+**Point-in-time restore.** `gcloud sql instances clone --point-in-time` to a minute before: a new instance, `RUNNABLE`, with the `wordpress` database. A point-in-time restore never overwrites the original instance.
+
+![Point-in-time restore](docs/screenshots/pitr-restore-test.png)
+
+### Monitoring
+
+**Dashboard.** Part of `wp-blueprint-dashboard-prod`: Apache requests, workers, scoreboard and traffic, from the Ops Agent; CPU and memory of the instances.
+
+![Monitoring dashboard](docs/screenshots/dashboard.png)
+
+**Uptime check.** The HTTPS check on the home page, passing from the three regions it runs in.
+
+![Uptime check](docs/screenshots/uptime-checks.png)
+
+**Uptime alert.** The alert firing before WordPress was installed, when the home page redirects to the installer and the check fails its content match. It closed by itself once the site answered.
+
+![Uptime alert firing](docs/screenshots/uptime-check-alert.png)
 
 ### WordPress
 
-**Setup over HTTPS.** The installer under `/wp-admin`, served on the domain through the load balancer with the managed certificate.
+**Installer.** The installer, from a deploy of 2026-10-11. Since then it is only reachable through IAP: the first request goes to the Google sign-in.
 
 ![WordPress setup](docs/screenshots/wordpress-setup.png)
 
@@ -741,9 +1054,6 @@ Taken from a deploy from scratch of this repository.
 
 Features not implemented in this version but planned as natural next steps:
 
-- **Cloud Monitoring & Alerting** — uptime checks on the load balancer IP, alert policies for Apache error rate and instance health, Cloud Ops Agent for OS-level and Apache metrics (requests/s, latency, error rate)
-- **Cloud Armor** — WAF rules and DDoS protection in front of the load balancer
-- **Cloud CDN** — enable caching at the load balancer level for static WordPress assets
+- **Staging environment** — a second project with the same code, its own variable file and its own state, with the network in a separate root
 - **Terraform tests** — infrastructure validation using `terraform test` or Terratest
 - **Multi-region failover** — add a Cloud SQL cross-region replica that can be promoted, and a second MIG in another region behind the same global load balancer
-- **Uploads served from the bucket** — a backend bucket on the load balancer, so media no longer goes through the instances

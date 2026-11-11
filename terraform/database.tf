@@ -4,7 +4,7 @@
 disk autoresize preventing disk space exhaustion, and private networking for secure communication. */
 resource "google_sql_database_instance" "main" {
   depends_on          = [google_project_service.gcp_services, google_service_networking_connection.private_connection]
-  name                = var.instance_name
+  name                = local.db_instance_name
   region              = var.instance_region
   database_version    = "MYSQL_8_4"
   deletion_protection = false # Set to true in production environments to prevent accidental deletion of the database instance.
@@ -18,8 +18,21 @@ resource "google_sql_database_instance" "main" {
     disk_size         = var.instance_disk_size_gb
 
     backup_configuration {
-      enabled            = true
-      binary_log_enabled = true
+      enabled                        = true
+      binary_log_enabled             = true
+      start_time                     = "02:00"
+      transaction_log_retention_days = 7
+      backup_retention_settings {
+        retained_backups = 8
+      }
+    }
+
+    # Sunday (day 7) at 04:00 UTC, after the backup window. "stable" is "Week 2" in the console: the
+    # update comes 15 to 21 days after Google's notice, leaving time to reschedule it or set a deny period.
+    maintenance_window {
+      day          = 7
+      hour         = 4
+      update_track = "stable"
     }
 
     ip_configuration {

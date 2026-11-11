@@ -5,17 +5,17 @@ resource "google_cloudfunctions2_function" "db_backup_fn" {
     google_project_service.gcp_services,
     time_sleep.fn_build_iam_propagation,
   ]
-  name        = var.function_name
+  name        = local.db_backup_function_name
   location    = var.function_region
   description = var.function_description
 
   build_config {
     runtime         = "python311"
     entry_point     = "run_backup"
-    service_account = google_service_account.cloudsql_backup_fn_build.id
+    service_account = google_service_account.db_backup_build.id
     source {
       storage_source {
-        bucket = google_storage_bucket.scripts.name
+        bucket = google_storage_bucket.fn_source.name
         object = google_storage_bucket_object.function_code.name
 
       }
@@ -24,10 +24,10 @@ resource "google_cloudfunctions2_function" "db_backup_fn" {
   }
   service_config {
     timeout_seconds       = var.function_timeout_sec
-    service_account_email = google_service_account.cloudsql_backup_fn.email
+    service_account_email = google_service_account.db_backup_fn.email
     environment_variables = {
       GCP_PROJECT_ID          = var.project_id
-      CLOUD_SQL_INSTANCE_NAME = var.instance_name
+      CLOUD_SQL_INSTANCE_NAME = local.db_instance_name
       BACKUP_BUCKET_NAME      = local.db_backup_bucket_name
     }
   }
@@ -49,7 +49,7 @@ module "export_db_scheduler" {
   schedule                      = local.scheduler_export_schedule # Daily at midnight
   backup_fn_uri                 = google_cloudfunctions2_function.db_backup_fn.url
   fn_backup_type                = local.scheduler_export_backup_type
-  invoker_service_account_email = google_service_account.scheduler_fn_invoker.email
+  invoker_service_account_email = google_service_account.scheduler_invoker.email
   http_method                   = var.http_method
   min_backoff_duration          = var.min_backoff_duration
   time_zone                     = var.time_zone

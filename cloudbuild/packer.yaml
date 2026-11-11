@@ -1,25 +1,29 @@
+# Every step image is pinned to an exact tag and its digest: a floating tag (":slim", "alpine")
+# changes under the build without a commit. To upgrade, change the tag and the digest together in a PR.
 steps:
-  # Install a pinned Packer version on top of the gcloud image.
-  # Packer needs gcloud on the same machine to open the IAP tunnel to the build VM (use_iap),
-  # and the official Packer image does not include it. The binary goes to /workspace, which
-  # is shared by every step of the build. The download is checked against a pinned SHA256.
+  # Download a pinned Packer version, check it against the pinned SHA256 and unzip it to /workspace,
+  # which every step of the build shares. Done in Alpine, whose busybox has wget, sha256sum and unzip:
+  # the gcloud image dropped python3, which this step used to unzip with (2026-11-09).
+  # Packer runs in the gcloud image in the next steps: it needs gcloud on the same machine to open the
+  # IAP tunnel to the build VM (use_iap), and the official Packer image does not include it. The
+  # Packer binary is statically linked, so it runs in both images.
   - id: 'install-packer'
-    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    name: 'alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
         set -e
         mkdir -p /workspace/bin
-        curl -fsSL -o /tmp/packer.zip https://releases.hashicorp.com/packer/$_PACKER_VERSION/packer_${_PACKER_VERSION}_linux_amd64.zip
+        wget -q -O /tmp/packer.zip https://releases.hashicorp.com/packer/$_PACKER_VERSION/packer_${_PACKER_VERSION}_linux_amd64.zip
         echo "$_PACKER_SHA256  /tmp/packer.zip" | sha256sum -c -
-        python3 -m zipfile -e /tmp/packer.zip /workspace/bin
+        unzip -o /tmp/packer.zip -d /workspace/bin
         chmod +x /workspace/bin/packer
         /workspace/bin/packer version
 
   # Initialize Packer plugins (downloads the googlecompute plugin)
   - id: 'packer-init'
-    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:592.0.0-slim@sha256:08c9cb2c82625689f26172f46f2cefdf30c3449959a71492569a824b537d369f'
     entrypoint: '/workspace/bin/packer'
     args: ['init', 'packer/']
     env:
@@ -28,7 +32,7 @@ steps:
 
   # Validate Packer configuration before building
   - id: 'packer-validate'
-    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:592.0.0-slim@sha256:08c9cb2c82625689f26172f46f2cefdf30c3449959a71492569a824b537d369f'
     entrypoint: '/workspace/bin/packer'
     args:
       - 'validate'
@@ -37,9 +41,7 @@ steps:
       - '-var'
       - 'zone=$_ZONE'
       - '-var'
-      - 'network=$_NETWORK'
-      - '-var'
-      - 'subnetwork=$_SUBNETWORK'
+      - 'environment=$_ENVIRONMENT'
       - '-var'
       - 'use_iap=$_USE_IAP'
       - 'packer/'
@@ -50,7 +52,7 @@ steps:
   # Build the golden image — creates a temporary VM, runs install.sh, snapshots the disk
   # PACKER_LOG=1 streams provisioner output to Cloud Build logs
   - id: 'packer-build'
-    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:592.0.0-slim@sha256:08c9cb2c82625689f26172f46f2cefdf30c3449959a71492569a824b537d369f'
     entrypoint: '/workspace/bin/packer'
     args:
       - 'build'
@@ -59,9 +61,7 @@ steps:
       - '-var'
       - 'zone=$_ZONE'
       - '-var'
-      - 'network=$_NETWORK'
-      - '-var'
-      - 'subnetwork=$_SUBNETWORK'
+      - 'environment=$_ENVIRONMENT'
       - '-var'
       - 'use_iap=$_USE_IAP'
       - 'packer/'
@@ -73,10 +73,10 @@ steps:
 substitutions:
   _PROJECT_ID: 'your-gcp-project-id'
   _ZONE: 'europe-west1-b'
-  _NETWORK: 'wordpress-mgmt-vpc'
-  _SUBNETWORK: 'wordpress-mgmt-subnet'
-  # true  — build VM without external IP, SSH through an IAP tunnel (management VPC)
-  # false — SSH to the VM's external IP; only for the first build in the default network
+  # Selects the build subnet (packer/variables.pkr.hcl)
+  _ENVIRONMENT: 'prod'
+  # true  — build VM in the build subnet, without external IP, SSH through an IAP tunnel
+  # false — default network and the VM's external IP; only for the first build
   _USE_IAP: 'true'
   # To upgrade Packer change both values. The checksum is in
   # https://releases.hashicorp.com/packer/<version>/packer_<version>_SHA256SUMS (linux_amd64 line)

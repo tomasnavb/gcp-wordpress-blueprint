@@ -1,4 +1,4 @@
-# Secret containers: the secret itself, without a value. All five, the password included, so the
+# Secret containers: the secret itself, without a value. All four, the password included, so the
 # bindings in IAM.tf that iterate over them keep covering the password.
 resource "google_secret_manager_secret" "wordpress_secrets" {
   for_each  = toset(local.secret_names)
@@ -16,7 +16,7 @@ resource "google_secret_manager_secret" "wordpress_secrets" {
   depends_on = [google_project_service.gcp_services]
 }
 
-# Values of the secrets that are not sensitive (names, host, connection string).
+# Values of the secrets that are not sensitive (database name, user and host).
 resource "google_secret_manager_secret_version" "wordpress_secrets" {
   for_each    = local.secret_values
   secret      = google_secret_manager_secret.wordpress_secrets[each.key].id

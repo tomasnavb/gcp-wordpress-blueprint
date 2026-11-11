@@ -29,13 +29,131 @@ apt-get update -y
 apt-cache madison gcsfuse | head -n 5
 apt-get install -y "gcsfuse=${GCSFUSE_VERSION}"
 
-echo ">>> Downloading WordPress..."
+echo ">>> Installing the Ops Agent..."
+# Sends VM metrics (memory and disk included, which Compute Engine does not collect by itself),
+# Apache metrics and the Apache error log to Cloud Monitoring and Cloud Logging. Same apt
+# repository host and key as gcsfuse, and the version pinned; to upgrade, change OPS_AGENT_VERSION.
+# The repository is added here instead of with Google's add-google-cloud-ops-agent-repo.sh, which
+# would be a script downloaded and run without a checksum. That script uses the same repository
+# for an exact version (google-cloud-ops-agent-<codename>-all).
+OPS_AGENT_VERSION="2.73.0"
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt google-cloud-ops-agent-${VERSION_CODENAME}-all main" \
+  > /etc/apt/sources.list.d/google-cloud-ops-agent.list
+apt-get update -y
+apt-cache madison google-cloud-ops-agent | head -n 5
+apt-get install -y "google-cloud-ops-agent=${OPS_AGENT_VERSION}~debian${VERSION_ID}"
+
+# Merged with the agent's built-in configuration (host metrics and syslog).
+#   - Apache metrics, read from mod_status at its default URL, http://localhost:80/server-status?auto.
+#     Debian enables mod_status with "Require local": the agent reads it from the VM itself, and a
+#     request through the load balancer, which comes from Google's proxy ranges, gets a 403.
+#   - Only the Apache error log. The access log would repeat the load balancer request logs, which
+#     are already in Cloud Logging, and would be paid for twice.
+# If pretty permalinks are ever enabled (mod_rewrite and AllowOverride, both off in this image),
+# WordPress's .htaccess sends every path that is not a file to index.php, /server-status included:
+# exclude it from those rules, or the agent stops receiving the Apache metrics.
+cat > /etc/google-cloud-ops-agent/config.yaml <<'YAMLEOF'
+metrics:
+  receivers:
+    apache:
+      type: apache
+  service:
+    pipelines:
+      apache:
+        receivers: [apache]
+logging:
+  receivers:
+    apache_error:
+      type: apache_error
+  service:
+    pipelines:
+      apache:
+        receivers: [apache_error]
+YAMLEOF
+
+# The build stops here if Apache does not answer the status page the agent reads.
+apache2ctl -M | grep -q status_module
+curl -fsS "http://localhost:80/server-status?auto" | grep -q '^Total Accesses:'
+
+echo ">>> Downloading WordPress and its language packs..."
+# Every download is pinned to an exact version and checked against the SHA256 in checksums.sha256,
+# committed in the repository (uploaded to /tmp by the Packer template). Nothing is extracted until
+# every file matches: sha256sum --strict fails on any mismatch or missing file, and set -e stops
+# the build.
+#
+# WordPress publishes only SHA1 and MD5 for its releases. The SHA256 committed here was computed
+# from the release archive after checking it against the official SHA1:
+#   https://wordpress.org/wordpress-<version>.tar.gz.sha1
+#
+# Language packs come from the same place WP-CLI downloads them (wp language core install), listed
+# by the WordPress.org translations API:
+#   https://api.wordpress.org/translations/core/1.0/?version=<version>
+#   https://api.wordpress.org/translations/themes/1.0/?slug=twentytwentyfive
+# They are installed here and not from the admin panel: DISALLOW_FILE_MODS (below) turns off
+# language pack installs, and a pack installed on one instance would be lost when the MIG replaces
+# it. The site language is chosen after the installation, in Settings > General > Site Language,
+# which lists the languages installed on disk. Pack versions follow the WordPress version (core)
+# and the theme version (Twenty Twenty-Five, the default theme). WordPress.org rebuilds a pack when
+# its translations change, without a new version: the build then fails on its checksum, and the
+# new pack must be reviewed and its SHA256 updated.
+#
+# To upgrade: change the versions or locales below, then run, from the repository root,
+#   bash packer/scripts/update-checksums.sh
+# which checks the WordPress archive against its official SHA1, checks THEME_VERSION against the
+# theme bundled in that release, and rewrites checksums.sha256. The variables below must stay in
+# the form VAR="value": that script reads them from this file. Twenty Twenty-Five has no es_AR
+# translation, so that language is in CORE_LOCALES only.
+WP_VERSION="7.1.3"
+THEME_SLUG="twentytwentyfive"
+THEME_VERSION="1.5"
+CORE_LOCALES="es_ES es_AR de_DE fr_FR it_IT ja nl_NL pl_PL pt_BR ru_RU"
+THEME_LOCALES="es_ES de_DE fr_FR it_IT ja nl_NL pl_PL pt_BR ru_RU"
+
+DOWNLOADS=/tmp/downloads
+mkdir -p "$DOWNLOADS"
+curl -fsSL -o "$DOWNLOADS/wordpress-${WP_VERSION}.tar.gz" "https://wordpress.org/wordpress-${WP_VERSION}.tar.gz"
+for locale in $CORE_LOCALES; do
+  curl -fsSL -o "$DOWNLOADS/wordpress-${WP_VERSION}-${locale}.zip" \
+    "https://downloads.wordpress.org/translation/core/${WP_VERSION}/${locale}.zip"
+done
+for locale in $THEME_LOCALES; do
+  curl -fsSL -o "$DOWNLOADS/${THEME_SLUG}-${THEME_VERSION}-${locale}.zip" \
+    "https://downloads.wordpress.org/translation/theme/${THEME_SLUG}/${THEME_VERSION}/${locale}.zip"
+done
+(cd "$DOWNLOADS" && sha256sum --strict -c /tmp/checksums.sha256)
+
 cd /var/www/html
-curl -O https://wordpress.org/latest.tar.gz
-tar -xzf latest.tar.gz
+tar -xzf "$DOWNLOADS/wordpress-${WP_VERSION}.tar.gz"
 cp -rf wordpress/* .
-rm -rf wordpress latest.tar.gz
+rm -rf wordpress
 rm -f index.html
+grep -q "wp_version = '${WP_VERSION}'" wp-includes/version.php
+
+mkdir -p wp-content/languages/themes
+for locale in $CORE_LOCALES; do
+  unzip -oq "$DOWNLOADS/wordpress-${WP_VERSION}-${locale}.zip" -d wp-content/languages
+done
+for locale in $THEME_LOCALES; do
+  unzip -oq "$DOWNLOADS/${THEME_SLUG}-${THEME_VERSION}-${locale}.zip" -d wp-content/languages/themes
+done
+rm -rf "$DOWNLOADS"
+
+echo ">>> Disabling application passwords..."
+# Application passwords authenticate the REST API and XML-RPC with HTTP Basic Auth. The REST API
+# (/wp-json/) is served by the public backend, so one of them would reach WordPress as an
+# authenticated user without going through IAP, which protects only the admin area and the login.
+# WordPress has no constant for this; the filter is the documented way to turn the feature off:
+#   https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/
+# A must-use plugin is loaded on every request and cannot be deactivated from the admin panel.
+mkdir -p wp-content/mu-plugins
+cat > wp-content/mu-plugins/disable-application-passwords.php <<'PHPEOF'
+<?php
+/*
+ * Plugin Name: Disable application passwords
+ * Description: Application passwords would authenticate the REST API without going through IAP.
+ */
+add_filter( 'wp_is_application_passwords_available', '__return_false' );
+PHPEOF
 
 # Leave wp-config-sample intact — credentials
 # will be injected at runtime via startup script
@@ -106,5 +224,16 @@ chown -R www-data:www-data /var/www/html
 
 echo ">>> Enabling services on boot..."
 systemctl enable apache2
+systemctl enable google-cloud-ops-agent
+
+# The build VM has no service account, so the agent cannot send anything during the build. Stop it
+# and drop what it buffered, so the instances do not send build-time logs as their own.
+systemctl stop google-cloud-ops-agent
+rm -rf /var/lib/google-cloud-ops-agent/fluent-bit/buffers
+
+echo ">>> Disk usage of the image..."
+# Recorded in the build log, to see how much of the disk the image uses.
+df -h /
+du -sh /var/www/html /var/www/html/wp-content/languages
 
 echo ">>> Build complete"

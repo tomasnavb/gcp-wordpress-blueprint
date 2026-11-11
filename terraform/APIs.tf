@@ -24,6 +24,9 @@ locals {
     "servicenetworking.googleapis.com", # Service Peering for Cloud SQL/Managed Services
     "iap.googleapis.com",               # Identity-Aware Proxy
 
+    # --- Monitoring ---
+    "monitoring.googleapis.com", # Uptime check, alert policies, dashboard, Ops Agent metrics
+
     # --- Security and Secret Management ---
     "secretmanager.googleapis.com", # Secure management of API keys and credentials
   ]

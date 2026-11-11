@@ -5,7 +5,7 @@ output "load_balancer_ip" {
 
 output "site_urls" {
   description = "URLs WordPress is served on once the certificate is active"
-  value       = [for domain in var.domain_names : "https://${domain}"]
+  value       = [for domain in local.domain_names : "https://${domain}"]
 }
 
 output "ssl_certificate_name" {

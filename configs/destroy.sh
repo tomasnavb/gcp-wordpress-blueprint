@@ -10,7 +10,7 @@ set -e
 #   1. Before terraform destroy:
 #        bash configs/destroy.sh empty-buckets
 #      Both buckets keep force_destroy = false on purpose, and their content is
-#      created by Cloud SQL (exports) and by WordPress (uploads, in the statics bucket), not by
+#      created by Cloud SQL (exports) and by WordPress (uploads, in the uploads bucket), not by
 #      Terraform, so terraform destroy refuses to delete them while they hold
 #      objects.
 #
@@ -26,11 +26,12 @@ set -e
 
 export PROJECT_ID="${PROJECT_ID:-your-gcp-project-id}"
 
-# Names must match Terraform: the backups bucket is <db_backup_bucket_base_name>-<project_id>
-# (terraform.tfvars), the statics bucket is fixed in terraform/locals.tf, the VPC is in terraform.tfvars.
-BACKUPS_BUCKET="wordpress-db-backups-${PROJECT_ID}"
-STATICS_BUCKET="wordpress-statics-${PROJECT_ID}"
-PROD_VPC="wordpress-prod-vpc"
+export ENVIRONMENT="${ENVIRONMENT:-prod}"   # environment in terraform/terraform.tfvars
+
+# Names must match terraform/locals.tf (naming convention): change them there and here together.
+BACKUPS_BUCKET="${PROJECT_ID}-db-backups"
+UPLOADS_BUCKET="${PROJECT_ID}-uploads"
+PROD_VPC="wp-blueprint-vpc-${ENVIRONMENT}"
 PEERING_NAME="servicenetworking-googleapis-com"
 
 usage() {
@@ -74,9 +75,9 @@ empty_bucket() {
 
 case "$1" in
   empty-buckets)
-    confirm "This deletes, for good, every object in gs://${BACKUPS_BUCKET} (database exports) and gs://${STATICS_BUCKET} (WordPress uploads), all versions included."
+    confirm "This deletes, for good, every object in gs://${BACKUPS_BUCKET} (database exports) and gs://${UPLOADS_BUCKET} (WordPress uploads), all versions included."
     empty_bucket "${BACKUPS_BUCKET}"
-    empty_bucket "${STATICS_BUCKET}"
+    empty_bucket "${UPLOADS_BUCKET}"
     echo ""
     echo "Buckets emptied. Now run terraform destroy (see the Destroy section of the README)."
     ;;
