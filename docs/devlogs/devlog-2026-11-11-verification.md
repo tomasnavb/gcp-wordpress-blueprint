@@ -42,6 +42,7 @@ Result values: `pending`, `done`, `failed`, `skipped`. When a check passes, the 
 | 4.4 | The export job runs and its file is in the backup bucket | `done` |
 | 4.5 | Failover with `tests/resilience/sql-failover.sh` | `done` (see below) |
 | 4.6 | The failover does not open an uptime incident (D7) | `done` (none opened: the downtime was far under the two minutes of the alert) |
+| 4.7 | Point-in-time restore to a new instance (T33): `gcloud sql instances clone wp-blueprint-db-prod wp-blueprint-db-restore-test --point-in-time=<a minute before>` | `done` (the clone is `RUNNABLE` and holds the `wordpress` database, `utf8mb4` / `utf8mb4_unicode_ci` as set by Terraform; deleted afterwards. WordPress reading the restored data is not checked: there is no admin path to the database, T45) |
 
 Failover, 2026-11-11:
 
@@ -63,6 +64,8 @@ Second run, the same day, back to the first zone:
 
 Across both runs, the downtime was 10 to 21 s. The `000` of the second run are requests that hung: WordPress was connecting to the old primary, which had stopped answering without closing the connection, and PHP waited instead of failing at once. A shorter connection timeout in PHP (`mysqli.connect_timeout`) would turn that wait into a fast error; left as an improvement.
 
+Point-in-time restore, 2026-11-11: the first `clone` call returned `is taking longer than expected` after about 10 minutes, with the instance in `PENDING_CREATE`; `gcloud` stops waiting, the operation goes on. A `delete` run right after it, then interrupted with Ctrl-C, had already reached the API and cancelled the clone (`gcloud sql operations wait` answered `[CANCELLED]`). The second `clone`, run with `--async` and followed with `gcloud sql operations wait --timeout=unlimited`, finished. A restore to a regional instance takes over 10 minutes: wait for the operation before anything else.
+
 The instances stayed healthy during the failover: `/health.php` does not use the database, on purpose. The site was down only for the part of the operation when the primary switched.
 
 ## 5. Monitoring
@@ -79,7 +82,7 @@ The instances stayed healthy during the failover: `/health.php` does not use the
 
 | # | Check | Result |
 |---|---|---|
-| 6.1 | The `_DOMAIN_NAMES` substitution of the two plan triggers holds the right domain (E1) | `pending` |
+| 6.1 | The `_DOMAIN_NAMES` substitution of the two plan triggers holds the right domain (E1) | `done` (it holds the `.dev` domain after a correction by hand in the console: `setup.sh` stores the exported value in the triggers, so a mistyped `DOMAIN_NAMES` has to be corrected in the plan command and in both triggers) |
 | 6.2 | Image build from the trigger: build subnet, no external IP or service account, through IAP; the build VM cannot reach Cloud SQL (E2, E3 of 2026-11-09) | `done` (screenshot of the build VM in `build-subnet-prod-europe-west1`; no external IP or service account by the Packer template, and the build could only reach it through IAP) |
 | 6.3 | The new image rolls out to the MIG without `_ALLOW_DESTRUCTIVE` (E4 of 2026-11-09) | `done` (the plan replaced the instance template, the apply passed without `_ALLOW_DESTRUCTIVE`, and the MIG replaced both instances one at a time) |
 | 6.4 | `configs/delete-default-network.sh` removes the default network (E9 of 2026-11-09) | `done` |

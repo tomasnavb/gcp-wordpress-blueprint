@@ -936,7 +936,7 @@ What the code does not do yet, tracked in [docs/to-do.md](docs/to-do.md):
 - **The instances do not verify the IAP signed header.** Google recommends that an application behind IAP verify the JWT IAP adds (`x-goog-iap-jwt-assertion`), as a backstop if a request ever reaches it without going through IAP. Here that backstop is a Cloud Armor rule on the public backend, which blocks any path containing a protected one; it depends on the path being decoded and normalized as expected, which the smoke tests check.
 - **Admin access through one user account.** IAP and SSH go to `IAP_USER_EMAIL`, not to a group, and IAP only admits accounts of the project's organization.
 - **WAF rules in preview.** They log but do not block until their matches are reviewed (see [Review and enforce the WAF rules](#review-and-enforce-the-waf-rules)).
-- **Restore not tested.** Neither a point-in-time recovery nor a restore from an export has been rehearsed (to-do T33).
+- **Restore partly tested.** A point-in-time restore to a new instance works: the clone holds the `wordpress` database (verification of 2026-11-11). WordPress reading the restored data, and a restore from an export, are not tested yet (to-do T33).
 - **IAM is not fully least-privilege.** The apply service account holds broad admin roles, and the Cloud SQL service account has `roles/storage.admin` on the backup bucket where writing objects would be enough.
 - **The password rotation is not zero-downtime**, see [Rotate the database password](#rotate-the-database-password).
 
@@ -1019,6 +1019,10 @@ From the verification deploy from scratch of 2026-11-11 ([docs/devlogs/devlog-20
 **Cloud SQL failover.** [tests/resilience/sql-failover.sh](tests/resilience/sql-failover.sh): the primary moves to the standby zone with the same private IP, and the site is down for 21 s in this run (10 s in the first). The `000` are requests that hung while WordPress connected to the old primary.
 
 ![Cloud SQL failover test](docs/screenshots/sql-failover.png)
+
+**Point-in-time restore.** `gcloud sql instances clone --point-in-time` to a minute before: a new instance, `RUNNABLE`, with the `wordpress` database. A point-in-time restore never overwrites the original instance.
+
+![Point-in-time restore](docs/screenshots/pitr-restore-test.png)
 
 ### Monitoring
 
