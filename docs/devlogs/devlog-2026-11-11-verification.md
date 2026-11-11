@@ -2,6 +2,8 @@
 
 Checklist of the second deploy from scratch of the branch `refactor/naming-and-network`, in a new project, after the fixes of the 2026-11-09 verification (E1 to E7 in [devlog-2026-11-09-verification.md](devlog-2026-11-09-verification.md)). A clean bootstrap confirms those fixes, which on 2026-11-09 were applied to a project already bootstrapped. How each test is run is in [../test-procedure.md](../test-procedure.md).
 
+The last commit with code deployed in this session is `d194f2c`, on the branch, which was then merged to `main` (pull request #13). `git diff d194f2c main -- terraform packer cloudbuild configs tests` shows only two comments changed (the image build time in `cloudbuild/packer.yaml` and `configs/setup.sh`); everything else after it is documentation.
+
 The site's domain is written `<domain>`.
 
 Result values: `pending`, `done`, `failed`, `skipped`. When a check passes, the matching task in the to-do is set to `done`.

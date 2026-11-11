@@ -5,7 +5,7 @@
 ![Google Provider](https://img.shields.io/badge/Google_Provider-7.25.0-4285F4?logo=google-cloud&logoColor=white)
 ![IaC](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform&logoColor=white)
 
-> **Verified in a deploy from scratch on 2026-11-11.** The project was refactored towards a production-ready setup: a naming convention for every resource, the management VPC removed, a dedicated subnet for the image build, one service account per pipeline job, an edge layer with Cloud Armor, Cloud CDN and a backend bucket for uploads, the admin area behind Identity-Aware Proxy, added after a bot took over the installer of an earlier deploy, and monitoring. What was checked, and the errors found and fixed on the way, are in [docs/devlogs/devlog-2026-11-11-verification.md](docs/devlogs/devlog-2026-11-11-verification.md); the screenshots are from that deploy.
+> **Verified in a deploy from scratch on 2026-11-11.** The project was refactored towards a production-ready setup: a naming convention for every resource, the management VPC removed, a dedicated subnet for the image build, one service account per pipeline job, an edge layer with Cloud Armor, Cloud CDN and a backend bucket for uploads, the admin area behind Identity-Aware Proxy, added after a bot took over the installer of an earlier deploy, and monitoring. What was checked, and the errors found and fixed on the way, are in [docs/devlogs/devlog-2026-11-11-verification.md](docs/devlogs/devlog-2026-11-11-verification.md); the screenshots are from that deploy. The code deployed was commit `d194f2c`; `main` differs from it only in documentation and two comments.
 
 **Terraform, Packer and Cloud Build code that deploys WordPress into a Google Cloud project of your own: an auto-healing managed instance group behind a global HTTPS load balancer with Cloud Armor and Cloud CDN, the admin area behind Identity-Aware Proxy, Cloud SQL on a private IP, scheduled backups and credentials in Secret Manager.** Infrastructure changes go through pull requests: plan on every PR, apply of the plan generated on `main` by a manual, approved trigger.
 
@@ -237,7 +237,7 @@ The pipeline runs each job with its own service account, created by `configs/set
 | `terraform-apply-sa` | Apply, manual and approved | The write roles that create and change the project |
 | `packer-build-sa` | Image build | Create the build VM and the image, and open the IAP tunnel |
 
-A `terraform plan` runs code from the pull request: providers, data sources, even an `external` data source that runs any command. With a single account holding write roles, a malicious pull request could use those permissions during its plan, before anyone approved anything. With a read-only plan account, the most a pull request can do is read; writing is reserved for the approved apply.
+A `terraform plan` runs code from the pull request: providers, data sources, even an `external` data source that runs any command. With a single account holding write roles, a malicious pull request could use those permissions during its plan, before anyone approved anything. With a read-only plan account, the most a pull request can do is read; writing is reserved for the approved apply. Read includes the database password: the plan account can access its secret, because the plan reads it with an `ephemeral` block, so code in a pull request could read it too (see [Known Limitations](#known-limitations)).
 
 ### Dedicated Build Identity for the Backup Function
 A Cloud Function v2 involves three identities, and they are easy to confuse:
@@ -262,7 +262,7 @@ Two details shaped how those roles are granted:
 ### Secret Manager for Credentials
 WordPress database credentials (`wp-blueprint-db-name-prod`, `wp-blueprint-db-user-prod`, `wp-blueprint-db-password-prod`, `wp-blueprint-db-host-prod`) are stored as secrets and read by the instances at startup via the startup script, which writes them into `wp-config.php` on the instance. The instance service account has `roles/secretmanager.secretAccessor` on each secret individually (least privilege).
 
-**The database password never reaches the Terraform state or a saved plan.** Both are files in a bucket, and a secret stored in them is a secret stored outside Secret Manager. Terraform generates and delivers the password with ephemeral resources and write-only arguments:
+**The database password is kept out of the Terraform state and the saved plans.** Both are files in a bucket, and a secret stored in them is a secret stored outside Secret Manager. Terraform generates and delivers the password with ephemeral resources and write-only arguments, whose values Terraform does not store by design. The deploy of 2026-11-11 confirmed it is not in the state; the saved plan was not inspected:
 
 ```text
 ephemeral random_password ──► Secret Manager ──(ephemeral read)──► Cloud SQL user
@@ -925,7 +925,7 @@ Each entry has the rule that matched (`previewSecurityPolicy.priority`) and the 
 - The uploads bucket is private: its objects are read only through the load balancer (Private Bucket Access), and public access prevention stays enforced
 - Cloud SQL is accessible only via private IP within the VPC, and the build VM is denied any traffic to its range
 - SSH access exclusively through IAP (no open port 22 to the internet)
-- Database credentials stored in Secret Manager. The password is never in the repository, the Terraform state or a saved plan; on an instance it exists only in `wp-config.php`, written at boot by the startup script
+- Database credentials stored in Secret Manager. The password is never in the repository, and is kept out of the Terraform state and the saved plans by ephemeral resources and write-only arguments (confirmed for the state); on an instance it exists only in `wp-config.php`, written at boot by the startup script
 - `project_id`, the operator email and the domains are not written in the code or the configuration — they are passed as Cloud Build substitutions (`TF_VAR_project_id`, `TF_VAR_iap_user_email`, `TF_VAR_domain_names`), so the repository deploys to any project without being edited, and a fork cannot request a certificate for someone else's domain by mistake. The project ID is an identifier, not a credential, and appears in the screenshots below
 - One service account per pipeline job: pull request plans run with a read-only account, so code in a pull request cannot write anything; only the approved apply can
 - The Packer build VM runs without a service account, so nothing in it can use Google credentials
@@ -948,6 +948,7 @@ What the code does not do yet, tracked in [docs/to-do.md](docs/to-do.md):
 - **Admin access through one user account.** IAP and SSH go to `IAP_USER_EMAIL`, not to a group, and IAP only admits accounts of the project's organization.
 - **WAF rules in preview.** They log but do not block until their matches are reviewed (see [Review and enforce the WAF rules](#review-and-enforce-the-waf-rules)).
 - **Restore partly tested.** A point-in-time restore to a new instance works: the clone holds the `wordpress` database (verification of 2026-11-11). WordPress reading the restored data, and a restore from an export, are not tested yet (to-do T33).
+- **A pull request plan can read the database password.** `terraform-plan-sa` has `roles/secretmanager.secretAccessor` on the password secret, which the plan needs, and the pull request trigger runs the plan of any pull request without approval. Code in a malicious pull request could read the secret during its plan. The database has no public IP, so the password alone does not reach it from outside, but read-only is not a trust boundary for untrusted code. The fix is to require an owner's approval before a pull request from someone else runs (comment control on the trigger, to-do T47).
 - **IAM is not fully least-privilege.** The apply service account holds broad admin roles, and the Cloud SQL service account has `roles/storage.admin` on the backup bucket where writing objects would be enough.
 - **The password rotation is not zero-downtime**, see [Rotate the database password](#rotate-the-database-password).
 

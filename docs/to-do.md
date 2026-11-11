@@ -17,24 +17,17 @@ Single list of the project's tasks and their status. It replaces the task tables
 
 Last updated: 2026-11-11.
 
+> **Project closed on 2026-11-11**, after the verification deploy from scratch ([devlog-2026-11-11-verification.md](devlogs/devlog-2026-11-11-verification.md)). The open tasks below are production hardening and follow-ups, kept as a record of what a production setup would still need. None is planned. The limitations that matter for the current code are summarized in the README, Known Limitations.
+
 ## Open
 
 In priority order.
 
-### 0. Refactor: naming convention, network and pipeline identities
-
-Applies the naming convention of the architecture style guide (`[project]-[component]-[environment]`, short project name `wp-blueprint`, region only in subnet names, service accounts without environment), removes the management VPC (T31), adds a dedicated subnet for the image build, splits the pipeline service account (T35), and adds the edge layer: uploads served from a backend bucket, Cloud CDN and Cloud Armor (T24, T42). R28 to R32, and T20, come from the installer takeover of the verification deploy (E4 in [devlog-2026-10-26-verification.md](devlogs/devlog-2026-10-26-verification.md)). Done on a clean deploy: nothing is deployed while it is in progress. Task IDs `R..` belong to this block.
+### 1. Checks not run in the verification deploys
 
 | ID | Task | Created | Status | Detail |
 |---|---|---|---|---|
-| R13 | Build firewall rules: SSH through IAP only to the tag `packer-build`, and egress from the build subnet to the Private Service Access range denied, so the build VM cannot reach Cloud SQL. Packer uses that tag instead of `iap-ssh-access`, which the web instances keep | 2026-10-16 | `unverified` | Naming review of 2026-10-16; Verification 11-11: IAP SSH to the `packer-build` tag confirmed (6.2); the denied egress to the Private Service Access range not tested |
-| R20 | Architecture diagram PNG in the README with the caption about the build subnet; remove `architecture.jpeg` and its outdated note. Fix in the diagram first: `MySQL :3309` to `:3306`, `/upoads` to `/uploads` | 2026-10-16 | `unverified` | Naming review of 2026-10-16; Verification 11-11: diagram content not reviewed in this pass |
-
-### 1. Finish verifying what is already deployed
-
-| ID | Task | Created | Status | Detail |
-|---|---|---|---|---|
-| T01 | Run the deploy checks not run yet: A2 (`setup.sh` stops without its variables), A5 (`nslookup`), A10 ("No destructive changes detected"), A16 (no logging denial on a fresh production instance), B6 (a destroy listed by the plan). Confirmed on 2026-10-11: A14 (both scheduler jobs), A20 (HTTP redirects to HTTPS) and A21 (TLS 1.1 rejected) | 2026-10-08 | `in-progress` | Verification, phases A and B |
+| T01 | Run the deploy checks not run yet: A2 (`setup.sh` stops without its variables), A5 (`nslookup`), A10 ("No destructive changes detected"), A16 (no logging denial on a fresh production instance), B6 (a destroy listed by the plan). Confirmed on 2026-10-11: A14 (both scheduler jobs), A20 (HTTP redirects to HTTPS) and A21 (TLS 1.1 rejected) | 2026-10-08 | `dropped` | Verification, phases A and B; replaced by the verification deploys of 2026-11-09 and 2026-11-11, which ran those checks on the new architecture |
 | T02 | Management VM writes its logs to Cloud Logging (`roles/logging.logWriter`) | 2026-10-07 | `dropped` | Backlog 3, check A15; management VM removed (R11) |
 | T04 | An instance whose startup script fails is reported unhealthy and replaced | 2026-10-08 | `pending` | Verification E3 |
 | T05 | The admin panel cannot install or edit plugins and themes (`DISALLOW_FILE_MODS`). The theme editor answered 403 to the attacker of E4; plugin installation still to check (B7) | 2026-10-08 | `unverified` | Devlog 10-08, 21; Verification 10-26, E4; Verification 11-11: theme editor refused to an attacker (E4 of 2026-10-26); no "Add New" in Plugins (B4 of 2026-11-09) |
@@ -82,9 +75,11 @@ Applies the naming convention of the architecture style guide (`[project]-[compo
 
 | ID | Task | Created | Status | Detail |
 |---|---|---|---|---|
+| R13 | Build firewall rules: SSH through IAP only to the tag `packer-build`, and egress from the build subnet to the Private Service Access range denied, so the build VM cannot reach Cloud SQL. Packer uses that tag instead of `iap-ssh-access`, which the web instances keep | 2026-10-16 | `unverified` | Naming review of 2026-10-16; Verification 11-11: IAP SSH to the `packer-build` tag confirmed (6.2); the denied egress to the Private Service Access range not tested |
+| R20 | Architecture diagram PNG in the README with the caption about the build subnet; remove `architecture.jpeg` and its outdated note. Fix in the diagram first: `MySQL :3309` to `:3306`, `/upoads` to `/uploads` | 2026-10-16 | `unverified` | Naming review of 2026-10-16; Verification 11-11: diagram content not reviewed in this pass |
 | T26 | Silence the `debconf` warnings of the image build (`DEBIAN_FRONTEND=noninteractive`) | 2026-10-08 | `pending` | Verification, build log notes |
 | T29 | Delete merged and stray branches: `update/https-lb-fr`, `update/global-https-lb-and-pipeline`, `fix/destroy-service-networking`, `feature/stateless-wordpress`, local branch `origin` | 2026-10-08 | `pending` | Devlog 10-08, 16 |
-| T30 | Mark A18 and A19 in the verification checklist: WordPress over HTTPS with its styles, and `/wp-admin` without a redirect loop | 2026-10-08 | `pending` | Verification A18, A19 |
+| T30 | Mark A18 and A19 in the verification checklist: WordPress over HTTPS with its styles, and `/wp-admin` without a redirect loop | 2026-10-08 | `dropped` | Verification A18, A19; checks of the 2026-10-07 checklist, replaced by 3.1 and the smoke tests of 2026-11-11 |
 
 ### 8. Production readiness
 
@@ -92,6 +87,7 @@ Changes to take the project from a portfolio deployment to one configured and do
 
 | ID | Task | Created | Status | Detail |
 |---|---|---|---|---|
+| T47 | Comment control on the pull request plan trigger (`--comment-control` in `configs/setup.sh`), so that a pull request from someone who is not an owner or collaborator only runs after an owner's `/gcbrun`. The plan account can read the database password secret, needed by the ephemeral read during plan, so any pull request plan can read it today | 2026-11-11 | `pending` | Project review of 2026-11-11; README, Known Limitations |
 | T45 | Administrative access to the database, which has no path since the management VM was removed (the image has no MySQL client). Choose and implement: Cloud SQL Studio, which needs Data API access on the instance (`settings.data_api_access`) and `roles/cloudsql.studioUser` for the operator (recommended: identity-based, no VM), or an ephemeral VM in the web subnet running the Cloud SQL Auth Proxy with `--private-ip`, reached through an IAP tunnel (no path from the internet, but a manual procedure and a pinned, checksummed proxy download). Listed in the README as a known limitation until done | 2026-10-25 | `pending` | Docs review of 2026-10-25 |
 | T33 | Restore runbook, tested: point-in-time recovery to a new instance, and restore from an export. A point-in-time clone was tested on 2026-11-11 (the new instance holds the `wordpress` database); left: WordPress reading the restored data, the restore from an export, and the written runbook | 2026-10-14 | `in-progress` | Production review of 2026-10-14; verification 2026-11-11, 4.7 |
 | T34 | Database protection: `deletion_protection` and `prevent_destroy` set to `true`, and the destroy procedure documented (a reviewed change that turns protection off first) | 2026-10-14 | `pending` | Production review of 2026-10-14 |
