@@ -218,10 +218,13 @@ resource "google_monitoring_alert_policy" "db_memory" {
 # One dashboard for the whole site: Apache (Ops Agent), the instances, the load balancer and Cloud SQL.
 locals {
   # One line chart: a title and a list of [filter, aligner, reducer, group by] series.
+  # No apache.current_connections: the agent takes it from ConnsTotal in mod_status, which only the
+  # event and worker MPMs report. mod_php runs Apache with prefork, so that metric is never created.
+  # The scoreboard shows what each prefork slot is doing instead (devlog-2026-11-11-verification.md, E2).
   dashboard_tiles = [
     { title = "Apache requests/s", series = [["metric.type=\"workload.googleapis.com/apache.requests\" resource.type=\"gce_instance\"", "ALIGN_RATE", "REDUCE_SUM", ["resource.label.instance_id"]]] },
     { title = "Apache workers by state", series = [["metric.type=\"workload.googleapis.com/apache.workers\" resource.type=\"gce_instance\"", "ALIGN_MEAN", "REDUCE_SUM", ["metric.label.state"]]] },
-    { title = "Apache current connections", series = [["metric.type=\"workload.googleapis.com/apache.current_connections\" resource.type=\"gce_instance\"", "ALIGN_MEAN", "REDUCE_SUM", ["resource.label.instance_id"]]] },
+    { title = "Apache scoreboard by state", series = [["metric.type=\"workload.googleapis.com/apache.scoreboard\" resource.type=\"gce_instance\"", "ALIGN_MEAN", "REDUCE_SUM", ["metric.label.state"]]] },
     { title = "Apache traffic (bytes/s)", series = [["metric.type=\"workload.googleapis.com/apache.traffic\" resource.type=\"gce_instance\"", "ALIGN_RATE", "REDUCE_SUM", ["resource.label.instance_id"]]] },
     { title = "Instance CPU utilization", series = [["metric.type=\"compute.googleapis.com/instance/cpu/utilization\" resource.type=\"gce_instance\"", "ALIGN_MEAN", "REDUCE_MEAN", ["resource.label.instance_id"]]] },
     { title = "Instance memory used (%)", series = [["metric.type=\"agent.googleapis.com/memory/percent_used\" resource.type=\"gce_instance\" metric.label.state=\"used\"", "ALIGN_MEAN", "REDUCE_MEAN", ["resource.label.instance_id"]]] },
